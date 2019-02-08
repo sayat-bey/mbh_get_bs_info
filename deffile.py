@@ -73,11 +73,10 @@ def mconnect(username, password, q, bs_dict, argv_dict):
 
     while True:
         device = q.get()
-        # qlenth = q.qsize()
         i = 0
         while True:
             try:
-                # print("{1:17}{2:25}{0:22}queue len: {3}".format("", device.ip_address, device.hostname, qlenth))
+                # print("{1:17}{2:25}{0:22}queue len: {3}".format("", device.ip_address, device.hostname))
                 device.connect(username, password)
                 show_commands(device)
                 arp_log_parse(device)
@@ -103,13 +102,15 @@ def mconnect(username, password, q, bs_dict, argv_dict):
                 if i == 5:
                     device.connection_status = False
                     device.connection_error_msg = str(err_msg)
-                    print("{0:17}{1:25}{2:20} i={3}".format(device.ip_address, device.hostname, "connection failed", i))
+                    print("{0:17}{1:25}{2:20} i={3}".format(device.ip_address, device.hostname,
+                                                            "BREAK connection failed", i))
                     q.task_done()
                     break
                 else:
                     i += 1
                     device.reset()
-                    print("{0:17}{1:25}{2:20} i={3}".format(device.ip_address, device.hostname, "connection failed", i))
+                    print("{0:17}{1:25}{2:20} i={3} msg={4}".format(device.ip_address, device.hostname,
+                                                                    "ERROR connection failed", i, err_msg))
                     time.sleep(5)
 
 
@@ -193,6 +194,13 @@ def arp_log_parse(device):
                     exclude_mac.append(ip_mac_vlan_match.group(2))
                     exclude_ip_vlan.append("{}{}{}".format(str(int(third_octet)+5), fourth_octet, str(int(vlan)+1)))
 
+    for line in device.show_arp_lora_log.splitlines():
+        ip_mac_vlan_match = re.search(ip_mac_vlan_pattern, line)
+        if ip_mac_vlan_match:
+            device.device_bs_info_list.append({"ip": ip_mac_vlan_match.group(1),
+                                               "mac": ip_mac_vlan_match.group(2),
+                                               "vlan": ip_mac_vlan_match.group(3)})
+
 
 def mac_log_parse(device):
     port_pattern = re.compile(r"[0-9]{3,4}\s{4}.{14}\s{4}DYNAMIC\s{5}(.+)")
@@ -205,8 +213,9 @@ def mac_log_parse(device):
                     print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "ERROR show_mac"))
                 else:
                     break
-            except:
-                print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "EXCEPT ERROR show_mac"))
+            except Exception as err_msg:
+                print("{0:17}{1:25}{2:20} msg={3}".format(device.ip_address, device.hostname,
+                                                          "EXCEPT ERROR show_mac", err_msg))
                 device.show_errors["show_mac"] += 1
         for line in show_mac_log.splitlines():
             port_match = re.search(port_pattern, line)
@@ -232,8 +241,9 @@ def show_commands(device):
                 print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "ERROR show_arp"))
             else:
                 break
-        except:
-            print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "EXCEPT ERROR show_arp"))
+        except Exception as err_msg:
+            print("{0:17}{1:25}{2:20} msg={3}".format(device.ip_address, device.hostname,
+                                                      "EXCEPT ERROR show_arp", err_msg))
             device.show_errors["show_arp"] += 1
 
     while True:
@@ -244,8 +254,9 @@ def show_commands(device):
                 print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "ERROR show_isis"))
             else:
                 break
-        except:
-            print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "EXCEPT ERROR show_isis"))
+        except Exception as err_msg:
+            print("{0:17}{1:25}{2:20} msg={3}".format(device.ip_address, device.hostname,
+                                                      "EXCEPT ERROR show_isis", err_msg))
             device.show_errors["show_isis"] += 1
 
     while True:
@@ -256,8 +267,9 @@ def show_commands(device):
                 print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "ERROR show_arp_lora"))
             else:
                 break
-        except:
-            print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "EXCEPT ERROR show_arp_lora"))
+        except Exception as err_msg:
+            print("{0:17}{1:25}{2:20} msg={3}".format(device.ip_address, device.hostname,
+                                                      "EXCEPT ERROR show_arp_lora", err_msg))
             device.show_errors["show_arp_lora"] += 1
 
 
@@ -422,8 +434,9 @@ def make_config(device):
                 else:
                     device.show_description_log[port] = description
                     break
-            except:
-                print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "ERROR make_config"))
+            except Exception as err_msg:
+                print("{0:17}{1:25}{2:20} msg={3}".format(device.ip_address, device.hostname,
+                                                          "EXCEPT make_config", err_msg))
                 device.show_errors["make_config"] += 1
 
         for line in description.splitlines():
@@ -465,9 +478,6 @@ def configure(device, argv_dict):
         else:
             print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "cfg is not needed"))
 
-'''
-kyzy-026045-csg-1 не видет БС
-нужно продумать код
-
-не видет bish.petr-046002-csg-1
-'''
+    else:
+        if len(device.commands) != 0:
+            print("{0:17}{1:25}{2:20}".format(device.ip_address, device.hostname, "cfg is needed"))

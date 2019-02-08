@@ -1,7 +1,6 @@
 from netmiko import ConnectHandler
 
 
-
 #######################################################################################
 # ------------------------------ classes part ----------------------------------------#
 #######################################################################################
@@ -76,4 +75,3 @@ class CellSiteGateway:
         self.commands = []
         self.show_description_log = {}      # {port: description}
         self.configuration_log = []
-
