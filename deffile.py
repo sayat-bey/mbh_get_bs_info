@@ -5,7 +5,7 @@ from devclass import CellSiteGateway
 from openpyxl import load_workbook, Workbook
 from pprint import pformat
 from netmiko.ssh_exception import NetMikoTimeoutException
-# from getpass import getpass
+from getpass import getpass
 
 
 #######################################################################################
@@ -15,7 +15,7 @@ from netmiko.ssh_exception import NetMikoTimeoutException
 
 def get_argv(argv):
 
-    argv_dict = {"maxth": 20, "conf": False}
+    argv_dict = {"maxth": 10, "conf": False}
     mt_pattern = re.compile(r"mt([0-9]+)")
 
     for i in argv:
@@ -174,11 +174,9 @@ def arp_log_parse(device):
             elif ip_mac_vlan_match.group(3) in exclude_vlan:
                 continue
             else:
-                octets = ip_mac_vlan_match.group(1).split(".")
-                third_octet = octets[2]
-                fourth_octet = octets[3]
+                last_octet = ip_mac_vlan_match.group(1).split(".")[3]
                 vlan = ip_mac_vlan_match.group(3)
-                ip_vlan = "{}{}{}".format(third_octet, fourth_octet, vlan)
+                ip_vlan = "{}{}".format(last_octet, vlan)
 
                 if ip_vlan in exclude_ip_vlan:
                     exclude_mac.append(ip_mac_vlan_match.group(2))
@@ -190,7 +188,7 @@ def arp_log_parse(device):
                                                        "vlan": ip_mac_vlan_match.group(3)})
 
                     exclude_mac.append(ip_mac_vlan_match.group(2))
-                    exclude_ip_vlan.append("{}{}{}".format(str(int(third_octet)+5), fourth_octet, str(int(vlan)+1)))
+                    exclude_ip_vlan.append("{}{}".format(last_octet, str(int(vlan)+1)))
 
     for line in device.show_arp_lora_log.splitlines():
         ip_mac_vlan_match = re.search(ip_mac_vlan_pattern, line)
