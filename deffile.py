@@ -34,10 +34,8 @@ def get_argv(argv):
 
 def get_user_pw():
 
-    # username = input("Enter login: ")
-    # password = getpass()
-    username = "sibraim"
-    password = "xjJOd3xzKO"
+    username = input("Enter login: ")
+    password = getpass()
 
     return username, password
 
