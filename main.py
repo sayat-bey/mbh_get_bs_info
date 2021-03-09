@@ -295,7 +295,7 @@ def load_excel(curr_date, curr_time):
             result.update(yaml_file)
 
     return result
-
+    
 
 def export_excel(devs, current_time, log_folder):
     filename = log_folder / f"{current_time}_mbh_bs_list.xlsx"
@@ -655,17 +655,20 @@ def csg_delete_info(dev):
     # Internet  10.165.129.232          5   4cb1.6c5e.9177  ARPA   Vlan1000
     # Internet  10.165.134.232          3   0046.4bb4.8f76  ARPA   Vlan1001
     # Internet  10.165.139.232          1   0046.4bb4.8f76  ARPA   Vlan1002
-    delele_mac = []
+    delete_mac = ["4846.fb02.ea15"]     # временно добавил лишний мак на fort.akta-043001-csg-1
     
     for mac, bs_info in dev.bs.items():
         if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
-            delele_mac.append(mac)
+            delete_mac.append(mac)
         if len(bs_info["vlan"]) == 1:
-            delele_mac.append(mac)
+            delete_mac.append(mac)
 
-    if delele_mac:
-        for i in set(delele_mac):
-            dev.removed_info.append(f"{dev.bs[i]['vlan']}:{dev.bs[i]['if_vlan']}")
+    if delete_mac:
+        for i in set(delete_mac):
+            if dev.bs.get(i):
+                dev.removed_info.append(f"{dev.bs[i]['vlan']}:{dev.bs[i]['if_vlan']}")
+            else:
+                print(f"{dev.hostname:39}csg_delete_info: {i} is not in dev.bs")
             del dev.bs[i]
             
     lacp_members = re.findall(r"(?:Gi|Te)\d/\d{1,2}", dev.show_lacp_log)
@@ -675,17 +678,17 @@ def csg_delete_info(dev):
  
 
 def pagg_delete_info(dev):
-    delele_mac = []
+    delete_mac = []
     
     for mac, bs_info in dev.bs.items():
         if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
-            delele_mac.append(mac)
+            delete_mac.append(mac)
         if len(bs_info["vlan"]) == 1:
-            delele_mac.append(mac)
+            delete_mac.append(mac)
 
-    if delele_mac:
-        print(f"{dev.hostname:39}{[' '.join(dev.bs[mac]['if_vlan']) for mac in delele_mac]} is removed from dev.bs")
-        for i in set(delele_mac):
+    if delete_mac:
+        print(f"{dev.hostname:39}{[' '.join(dev.bs[mac]['if_vlan']) for mac in delete_mac]} is removed from dev.bs")
+        for i in set(delete_mac):
             del dev.bs[i]
             
     lacp_members = re.findall(r"Gi0/\d/\d/\d{1,2}", dev.show_lacp_log)
