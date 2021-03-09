@@ -655,7 +655,12 @@ def csg_delete_info(dev):
     # Internet  10.165.129.232          5   4cb1.6c5e.9177  ARPA   Vlan1000
     # Internet  10.165.134.232          3   0046.4bb4.8f76  ARPA   Vlan1001
     # Internet  10.165.139.232          1   0046.4bb4.8f76  ARPA   Vlan1002
-    delete_mac = ["4846.fb02.ea15"]     # временно добавил лишний мак на fort.akta-043001-csg-1
+    delete_mac = []
+    
+    tmp = {"fort.akta-043001-csg-1": "4846.fb02.ea15"}     # временно добавил лишний мак на fort.akta-043001-csg-1
+    for h, m in tmp.items():
+        if dev.hostname == h and dev.bs.get(m):
+            delete_mac.append(m)
     
     for mac, bs_info in dev.bs.items():
         if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
