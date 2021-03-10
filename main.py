@@ -673,7 +673,7 @@ def csg_delete_info(dev):
     if delete_mac:
         for i in set(delete_mac):
             if dev.bs.get(i):
-                dev.removed_info.append(f"{dev.bs[i]['vlan']}:{dev.bs[i]['if_vlan']}")
+                dev.removed_info.append(f"{i}:{dev.bs[i]['vlan']}")
             else:
                 print(f"{dev.hostname:39}csg_delete_info: {i} is not in dev.bs")
             del dev.bs[i]
