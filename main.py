@@ -417,7 +417,7 @@ def export_device_info(dev, export_file):
 def define_inf_exclude(dev):
     dev.exclude_inf.extend([str(i) for i in range(1080, 1100)])  # MA BGP
     dev.exclude_inf.extend([str(i) for i in range(4000, 4100)])  # MW MGMT
-    dev.exclude_inf.extend([str(i) for i in range(2020, 2031)])  # SMART METERING
+    dev.exclude_inf.extend([str(i) for i in range(2020, 2099)])  # SMART METERING
 
     for line in dev.show_isis_neighbors_log.splitlines():
         match = re.search(r".*L2 +Vl(\d+) +", line) # akta-040001-pag L2 Vl(200) 10.238.121.65
@@ -668,7 +668,7 @@ def csg_delete_info(dev):
             delete_mac.append(mac)
         if mac not in dev.show_arp_log and len(bs_info["vlan"])>1: # удалить БС без IP адреса, ошибка на стороне МТС либо новая не настроянная БС
             delete_mac.append(mac)
-            print(f"{dev.hostname:39}csg_delete_info: removing {mac} is OK, it is not in arp table")
+            # print(f"{dev.hostname:39}csg_delete_info: removing {mac} is OK, it is not in arp table")
 
     if delete_mac:
         for i in set(delete_mac):
