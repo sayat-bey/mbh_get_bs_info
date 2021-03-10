@@ -670,20 +670,9 @@ def csg_delete_info(dev):
     for mac, bs_info in dev.bs.items():
         if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
-            if mac in dev.show_arp_log and len(bs_info["vlan"]) > 1:
+            if mac in dev.show_arp_log and len(bs_info["vlan"]) > 2:
                 print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
- 
-     # if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
-     #     delete_mac.append(mac)
-     # if len(bs_info["vlan"]) == 1:
-     #     delete_mac.append(mac)
-     # if len(bs_info["bs_id"]) == 14 and len(bs_info["vlan"])>1:   
-     #     if mac not in dev.show_arp_log: # удалить БС без IP адреса, ошибка на стороне МТС либо новая не настроянная БС
-     #         delete_mac.append(mac)
-     #     else:   # чтобы не прописывать MAC в description
-     #         delete_mac.append(mac)
-     #         print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
-   
+
     if delete_mac:
         for i in set(delete_mac):
             dev.removed_info.append(f"{dev.bs[i]['vlan']}:{i}")
