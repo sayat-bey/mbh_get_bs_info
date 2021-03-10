@@ -666,7 +666,7 @@ def csg_delete_info(dev):
             delete_mac.append(mac)
         if len(bs_info["vlan"]) == 1:
             delete_mac.append(mac)
-        if mac not in dev.show_arp_log and len(bs_info["vlan"]>1): # удалить БС без IP адреса, ошибка на стороне МТС либо новая не настроянная БС
+        if mac not in dev.show_arp_log and len(bs_info["vlan"])>1: # удалить БС без IP адреса, ошибка на стороне МТС либо новая не настроянная БС
             delete_mac.append(mac)
             print(f"{dev.hostname:39}csg_delete_info: removing {mac} is OK, it is not in arp table")
 
