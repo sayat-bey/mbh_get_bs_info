@@ -3,7 +3,7 @@ import time
 import queue
 import re
 from threading import Thread
-from pprint import pformat, pprint
+from pprint import pformat
 from openpyxl import load_workbook, Workbook
 from getpass import getpass
 from sys import argv
@@ -59,8 +59,8 @@ class CellSiteGateway:
         self.show_lacp_log = self.ssh_conn.send_command(r"show etherchannel summary | include LACP")
         self.show_tengig_bw_log = self.ssh_conn.send_command(r"show interfaces te0/0 | in BW")
 
-    def parse(self, dev):
-        csg_mac_log_parse(dev)
+    def parse(self, dev, bs_dict):
+        csg_mac_log_parse(dev, bs_dict)
         csg_arp_log_parse(dev)
         csg_define_pagg(dev)
         csg_description_parse(dev)
@@ -130,8 +130,8 @@ class PaggXR(CellSiteGateway):
                                                                r'| exclude "csg|agg|pagg|masg|admin-down|UPLINK|Lo|Nu"')
         self.show_lacp_log = self.ssh_conn.send_command(r"show bundle | include Local")
 
-    def parse(self, dev):
-        pagg_arp_log_parse(dev)
+    def parse(self, dev, bs_dict):
+        pagg_arp_log_parse(dev, bs_dict)
         pagg_description_parse(dev)
 
     def lag_member_tag(self, dev):
@@ -415,8 +415,8 @@ def export_device_info(dev, export_file):
 
 
 def define_inf_exclude(dev):
-    dev.exclude_inf.extend([str(i) for i in range(1080, 1100)])  # MA BGP
-    dev.exclude_inf.extend([str(i) for i in range(4000, 4100)])  # MW MGMT
+    dev.exclude_inf.extend([str(i) for i in range(1080, 1199)])  # MA BGP
+    dev.exclude_inf.extend([str(i) for i in range(4000, 4099)])  # MW MGMT
     dev.exclude_inf.extend([str(i) for i in range(2020, 2099)])  # SMART METERING
 
     for line in dev.show_isis_neighbors_log.splitlines():
@@ -425,7 +425,7 @@ def define_inf_exclude(dev):
             dev.exclude_inf.append(match[1])
 
 
-def csg_mac_log_parse(dev):
+def csg_mac_log_parse(dev, bs_dict):
     pattern = re.compile(r"(\d+)\s+(\w{4}\.\w{4}\.\w{4})\s+DYNAMIC\s+(\S+)")
     # (3001)    (48fd.8e05.6fa7)    DYNAMIC     (Gi0/8)
     for line in dev.show_mac_log.splitlines():
@@ -434,10 +434,15 @@ def csg_mac_log_parse(dev):
             vlan = match[1]  # 3001
             mac = match[2]  # 48fd.8e05.6fa7
             port = match[3]  # Gi0/8
+            if bs_dict.get(mac):
+                bs = bs_dict[mac]
+            else:
+                bs = mac
+                
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
             else:
-                dev.bs[mac] = {"bs_id": "",
+                dev.bs[mac] = {"bs_id": bs,
                                "port": port,
                                "if_vlan": [],
                                "vlan": [vlan]}
@@ -457,7 +462,7 @@ def csg_arp_log_parse(dev):
                 print(f"{dev.hostname:39}: arp_log_parse - {mac} not in MAC table")
 
 
-def pagg_arp_log_parse(dev):
+def pagg_arp_log_parse(dev, bs_dict):
     pattern = re.compile(r"\d+\.\d+\.\d+\.\d+\s+[0-9:]{8}\s+(\w{4}\.\w{4}\.\w{4})\s+Dynamic\s+ARPA\s+"
                          r"([-A-Za-z]+)([0-9/]+)\.(\d+)$")
     # 10.146.56.1     00:02:06   (883f.d304.e2a1)  Dynamic    ARPA  (GigabitEthernet)(0/0/0/5).(1080)
@@ -469,6 +474,11 @@ def pagg_arp_log_parse(dev):
             port_ethernet = match[2]  # GigabitEthernet
             port_number = match[3]  # 0/0/0/5
             vlan = match[4]  # 1080
+            
+            if bs_dict.get(mac):
+                bs = bs_dict[mac]
+            else:
+                bs = mac
 
             if port_ethernet == "Bundle-Ether":
                 port_ethernet = "BE"
@@ -486,7 +496,7 @@ def pagg_arp_log_parse(dev):
                 dev.bs[mac] = {"port": f'{port_ethernet}{port_number}',
                                "if_vlan": [f'{port_ethernet}{port_number}.{vlan}'],
                                "vlan": [f'{port_ethernet}{port_number}.{vlan}'],
-                               "bs_id": ""}
+                               "bs_id": bs}
 
 
 def csg_description_parse(dev):
@@ -655,27 +665,28 @@ def pagg_lag_member_tag(dev):
 
 
 def csg_delete_info(dev):
-    # удаляет MAC адреса от 2G плат, на таких БС 3G платы имеют другой MAC
-    # Internet  10.165.129.232          5   4cb1.6c5e.9177  ARPA   Vlan1000
-    # Internet  10.165.134.232          3   0046.4bb4.8f76  ARPA   Vlan1001
-    # Internet  10.165.139.232          1   0046.4bb4.8f76  ARPA   Vlan1002
     delete_mac = []
     
     for mac, bs_info in dev.bs.items():
-        if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
+        if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
-        if len(bs_info["vlan"]) == 1:
-            delete_mac.append(mac)
-        if mac not in dev.show_arp_log and len(bs_info["vlan"])>1: # удалить БС без IP адреса, ошибка на стороне МТС либо новая не настроянная БС
-            delete_mac.append(mac)
-            # print(f"{dev.hostname:39}csg_delete_info: removing {mac} is OK, it is not in arp table")
-
+            if mac in dev.show_arp_log and len(bs_info["vlan"]) > 1:
+                print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
+ 
+     # if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
+     #     delete_mac.append(mac)
+     # if len(bs_info["vlan"]) == 1:
+     #     delete_mac.append(mac)
+     # if len(bs_info["bs_id"]) == 14 and len(bs_info["vlan"])>1:   
+     #     if mac not in dev.show_arp_log: # удалить БС без IP адреса, ошибка на стороне МТС либо новая не настроянная БС
+     #         delete_mac.append(mac)
+     #     else:   # чтобы не прописывать MAC в description
+     #         delete_mac.append(mac)
+     #         print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
+   
     if delete_mac:
         for i in set(delete_mac):
-            if dev.bs.get(i):
-                dev.removed_info.append(f"{i}:{dev.bs[i]['vlan']}")
-            else:
-                print(f"{dev.hostname:39}csg_delete_info: {i} is not in dev.bs")
+            dev.removed_info.append(f"{dev.bs[i]['vlan']}:{i}")
             del dev.bs[i]
             
     lacp_members = re.findall(r"(?:Gi|Te)\d/\d{1,2}", dev.show_lacp_log)
@@ -702,16 +713,6 @@ def pagg_delete_info(dev):
     for m in lacp_members:
         if dev.port_bs.get(m):
             del dev.port_bs[m] 
-
-
-def define_bs(dev, bs_dict):
-    for mac in dev.bs.keys():
-        bs = bs_dict.get(mac)
-        if bs:
-            dev.bs[mac]["bs_id"] = bs
-        else:
-            dev.bs[mac]["bs_id"] = mac
-            print(f"{dev.hostname:39}define_bs: {mac} not in MAC-BS.excel table")
 
 
 def csg_define_pagg(dev):
@@ -851,11 +852,10 @@ def connect_dev(my_username, my_password, dev_queue, bs_dict, settings):
                                               username=my_username, password=my_password)
                 dev.show_commands()
                 define_inf_exclude(dev)
-                dev.parse(dev)
+                dev.parse(dev, bs_dict)
                 dev.lag_member_tag(dev)
                 dev.delete_info(dev)
                 description_bs_parse(dev)
-                define_bs(dev, bs_dict)
                 dev.define_port_bs(dev)
                 shorten_bs(dev)
                 dev.make_config(dev)
@@ -910,13 +910,12 @@ def test_connect_dev(dev, settings):
             dev.show_description_log = descr.read()
 
 
-def test_connect(dev_queue, bs_dict, settings):
+def test_connect(dev_queue, settings):
     dev = dev_queue.get()
     test_connect_dev(dev, settings)
     define_inf_exclude(dev)
     dev.parse(dev)
     description_bs_parse(dev)
-    define_bs(dev, bs_dict)
     dev.define_port_bs(dev)
     shorten_bs(dev)
     dev.make_config(dev)
