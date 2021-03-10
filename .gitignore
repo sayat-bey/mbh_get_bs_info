@@ -2,3 +2,5 @@
 __pycache__/**
 logs/**
 devices.yaml
+mac_bs.yaml
+csv_tr_map.*
