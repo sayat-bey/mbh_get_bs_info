@@ -8,3 +8,8 @@ v3 (03.12.2019)
 
 v4 (09.03.2021)
 - переписан код, оптимизирован
+
+v4.4 (10.03.2021)
+- способность сохранить конфигурацию на IOS после сообщения:
+  Warning: Attempting to overwrite an NVRAM configuration previously written
+  by a different version of the system image. \[confirm]?

@@ -82,7 +82,11 @@ class CellSiteGateway:
         self.configuration_log.append(self.ssh_conn.send_config_set(cmd_list))
 
     def commit(self):
-        self.configuration_log.append(self.ssh_conn.save_config())
+        try:
+            self.configuration_log.append(self.ssh_conn.save_config())
+        except Exception as err_msg:
+            self.configuration_log.append(f"COMMIT is OK after msg:{err_msg}")
+            self.configuration_log.append(self.ssh_conn.send_command("\n", expect_string=r"#"))
 
     def reset(self):
         self.connection_status = True  # failed connection status, False if connection fails
@@ -229,7 +233,7 @@ def write_logs(devs, current_time, log_folder, export_device_info, export_excel,
             conn_msg_filename_file.write(f"{dev.connection_error_msg}\n")
             config_filename_file.write("\n\n")
             
-        if settings["conf"]:
+        if settings["conf"] and dev.commands:
             config_filename_file.write("#" * 80 + "\n")
             config_filename_file.write(f"### {dev.hostname} : {dev.ip_address} ###\n\n")
             config_filename_file.write("".join(dev.configuration_log))
