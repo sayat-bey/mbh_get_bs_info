@@ -861,7 +861,7 @@ def csg_delete_info(dev):
 
     if delete_mac:
         for i in set(delete_mac):
-            dev.removed_info.append(dev.bs[i]['vlan'])
+            dev.removed_info.extend(dev.bs[i]['vlan'])
             del dev.bs[i]
             
     if dev.lag:
@@ -882,7 +882,7 @@ def pagg_delete_info(dev):
 
     if delete_mac:
         for i in set(delete_mac):
-            dev.removed_info.append(dev.bs[i]['vlan'])
+            dev.removed_info.extend(dev.bs[i]['vlan'])
             del dev.bs[i]
             
     if dev.lag:
