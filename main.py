@@ -848,16 +848,20 @@ def pagg_lag_member_tag(dev):
 
 def csg_delete_info(dev):
     delete_mac = []
+    dev_exclude = ["shor.asta-032001-csg-1", "esil.koks-025001-csg-1"]  # устройство на которых БС прописана как L2 
     
     for mac, bs_info in dev.bs.items():
         if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
             if mac in dev.show_arp_log and len(bs_info["vlan"]) > 2:
                 print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
+        else:
+            if mac not in dev.show_arp_log and dev.hostname not in dev_exclude:
+                delete_mac.append(mac)
 
     if delete_mac:
         for i in set(delete_mac):
-            dev.removed_info.append(f"{dev.bs[i]['vlan']}:{i}")
+            dev.removed_info.append(dev.bs[i]['vlan'])
             del dev.bs[i]
             
     if dev.lag:
@@ -878,7 +882,7 @@ def pagg_delete_info(dev):
 
     if delete_mac:
         for i in set(delete_mac):
-            dev.removed_info.append(f"{dev.bs[i]['vlan']}:{i}")
+            dev.removed_info.append(dev.bs[i]['vlan'])
             del dev.bs[i]
             
     if dev.lag:
