@@ -13,3 +13,6 @@ v4.4 (10.03.2021)
 - способность сохранить конфигурацию на IOS после сообщения:
   Warning: Attempting to overwrite an NVRAM configuration previously written
   by a different version of the system image. \[confirm]?
+  
+v4.6 (11.03.2021)
+- добавлен IOS XE
