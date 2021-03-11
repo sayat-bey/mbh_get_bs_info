@@ -33,9 +33,8 @@ class CellSiteGateway:
         self.show_arp_log = ""
         self.show_description_log = ""
         self.show_isis_neighbors_log = ""
-        self.show_lacp_log = ""
         self.show_tengig_bw_log = ""
-        self.show_tengig_bw = False     # False: 1G, True: 10G
+        self.show_tengig_bw = None     # False: 1G, True: 10G
 
         self.pagg = "-"
         self.exclude_inf = []  # exclude interface vlans
@@ -56,7 +55,6 @@ class CellSiteGateway:
         self.show_isis_neighbors_log = self.ssh_conn.send_command(r"show isis neighbors | include Vl")
         self.show_mac_log = self.ssh_conn.send_command(r"show mac-address-table")
         self.show_description_log = self.ssh_conn.send_command(r"show interfaces description")
-        self.show_lacp_log = self.ssh_conn.send_command(r"show etherchannel summary | include LACP")
         self.show_tengig_bw_log = self.ssh_conn.send_command(r"show interfaces te0/0 | in BW")
 
     def parse(self, dev, bs_dict):
@@ -96,9 +94,8 @@ class CellSiteGateway:
         self.show_arp_log = ""
         self.show_description_log = ""
         self.show_isis_neighbors_log = ""
-        self.show_lacp_log = ""
         self.show_tengig_bw_log = ""
-        self.show_tengig_bw = False
+        self.show_tengig_bw = None
         self.pagg = "-"
         self.exclude_inf = []
         self.bs = {}
@@ -126,9 +123,7 @@ class PaggXR(CellSiteGateway):
 
     def show_commands(self):
         self.show_arp_log = self.ssh_conn.send_command(r"show arp vrf MA | exclude Interface")
-        self.show_description_log = self.ssh_conn.send_command(r'show interfaces description '
-                                                               r'| exclude "csg|agg|pagg|masg|admin-down|UPLINK|Lo|Nu"')
-        self.show_lacp_log = self.ssh_conn.send_command(r"show bundle | include Local")
+        self.show_description_log = self.ssh_conn.send_command(r'show interfaces description')
 
     def parse(self, dev, bs_dict):
         pagg_arp_log_parse(dev, bs_dict)
@@ -154,7 +149,6 @@ class PaggXR(CellSiteGateway):
         self.show_arp_log = ""
         self.show_description_log = ""
         self.show_isis_neighbors_log = ""
-        self.show_lacp_log = ""
         self.exclude_inf = []
         self.bs = {}
         self.port_bs = {}
@@ -320,10 +314,10 @@ def export_excel(devs, current_time, log_folder):
                                   dev.hostname,
                                   dev.ip_address,
                                   f'{port} ({len(dev.lag[port]["members"])} Gps)',
-                                  f'{" ".join(dev.lag[port]["tag"])}',
+                                  f'{" ".join(set(dev.lag[port]["tag"]))}',
                                   ' '.join(port_info["bs"])])
                 else:
-                    if "Te" in port and not dev.show_tengig_bw:
+                    if "Te" in port and dev.show_tengig_bw == "1G":
                         sheet.append([dev.pagg,
                                       dev.hostname,
                                       dev.ip_address,
@@ -379,15 +373,10 @@ def export_device_info(dev, export_file):
     export_file.write("\n\n")
     
     export_file.write("-" * 80 + "\n")
-    export_file.write("device.show_lacp_log\n\n")
-    export_file.write(dev.show_lacp_log)
-    export_file.write("\n\n")
-
-    export_file.write("-" * 80 + "\n")
     export_file.write("device.bs\n\n")
     export_file.write(pformat(dev.bs))
     export_file.write("\n\n")
-
+    
     export_file.write("-" * 80 + "\n")
     export_file.write("device.port_bs\n\n")
     export_file.write(pformat(dev.port_bs))
@@ -446,6 +435,9 @@ def csg_mac_log_parse(dev, bs_dict):
                                "port": port,
                                "if_vlan": [],
                                "vlan": [vlan]}
+                               
+            if "Po" in port:
+                dev.lag[port] = {"members": [], "tag": []}
 
 
 def csg_arp_log_parse(dev):
@@ -466,14 +458,15 @@ def pagg_arp_log_parse(dev, bs_dict):
     pattern = re.compile(r"\d+\.\d+\.\d+\.\d+\s+[0-9:]{8}\s+(\w{4}\.\w{4}\.\w{4})\s+Dynamic\s+ARPA\s+"
                          r"([-A-Za-z]+)([0-9/]+)\.(\d+)$")
     # 10.146.56.1     00:02:06   (883f.d304.e2a1)  Dynamic    ARPA  (GigabitEthernet)(0/0/0/5).(1080)
+    # 10.164.24.243   00:02:11   (845b.1260.9241)  Dynamic    ARPA  (Bundle-Ether)(10).(1004)
 
     for line in dev.show_arp_log.splitlines():
         match = re.search(pattern, line)  # ip mac inf_vlan
         if match:
-            mac = match[1]  # 883f.d304.e2a1
-            port_ethernet = match[2]  # GigabitEthernet
-            port_number = match[3]  # 0/0/0/5
-            vlan = match[4]  # 1080
+            mac = match[1]              # 883f.d304.e2a1
+            port_ethernet = match[2]    # GigabitEthernet
+            port_number = match[3]      # 0/0/0/5
+            vlan = match[4]             # 1080
             
             if bs_dict.get(mac):
                 bs = bs_dict[mac]
@@ -490,21 +483,24 @@ def pagg_arp_log_parse(dev, bs_dict):
                 print(f"{dev.hostname:39}:pagg_arp_log_parse: Gi,Te,Be not in {port_ethernet}")
 
             if dev.bs.get(mac):
-                dev.bs[mac]["if_vlan"].append(f'{port_ethernet}{port_number}.{vlan}')
-                dev.bs[mac]["vlan"].append(f'{port_ethernet}{port_number}.{vlan}')
+                dev.bs[mac]["if_vlan"].append(vlan)
+                dev.bs[mac]["vlan"].append(vlan)
             else:
                 dev.bs[mac] = {"port": f'{port_ethernet}{port_number}',
-                               "if_vlan": [f'{port_ethernet}{port_number}.{vlan}'],
-                               "vlan": [f'{port_ethernet}{port_number}.{vlan}'],
+                               "if_vlan": [vlan],
+                               "vlan": [vlan],
                                "bs_id": bs}
-
+                               
+            if port_ethernet == "BE":
+                dev.lag[f"{port_ethernet}{port_number}"] = {"members": [], "tag": []}
+    
 
 def csg_description_parse(dev):
     pattern_port = re.compile(r"((?:Gi|Te|Po)\S+)\s+up\s+up\s*(.*)")  # (Gi0/6) up up (AK7137 BS: ALG005 AK7160)
     pattern_port_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")  # (AK7137) BS: (ALG005 AK7160)
     pattern_inf = re.compile(r"Vl(\d+)\s+up\s+up\s*(.*)")  # Vl(1000) up up (ABIS BS: ALG005 AK7160)
     pattern_inf_tag_bs = re.compile(r"(?:.*\s)?BS:\s?(.*)")  # ABIS BS: (ALG005 AK7160)
-    for line in dev.show_description_log.splitlines():  # sh descr | ex csg|pagg|UPLINK|DOWNLINK
+    for line in dev.show_description_log.splitlines():
         match_port = re.search(pattern_port, line)
         match_inf = re.search(pattern_inf, line)
         if match_port:
@@ -573,10 +569,10 @@ def pagg_description_parse(dev):
     pattern = re.compile(r"((?:Gi|Te|BE)[0-9/]+)\s+up\s+up\s*(.*)$")
     # (Gi0/0/0/5)     up  up  (AU7104 BS: ZHA012)
     # Gi0/0/0/5.1000  up  up  AU7104
-    pattern_tag_bs = re.compile(r"(.*) BS:\s?(.*)")
+    pattern_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")
     # (AU7104) BS: (ZHA012)
 
-    for line in dev.show_description_log.splitlines():  # sh descr | ex csg|pagg|UPLINK|DOWNLINK
+    for line in dev.show_description_log.splitlines():
         match = re.search(pattern, line)
         if match:
             port = match[1]
@@ -637,32 +633,41 @@ def description_bs_parse(dev):
 
 
 def csg_tengig_bw_parse(dev):
-    if "BW 10000000 Kbit/sec" in dev.show_tengig_bw_log:
-        dev.show_tengig_bw = True
+    if "BW 1000000 Kbit" in dev.show_tengig_bw_log:
+        dev.show_tengig_bw = "1G"
 
 
 def csg_lag_member_tag(dev):
-    pattern = re.compile(r"\d +(Po\d+).*LACP +")                        # 1  Po1(RU)  LACP  Gi0/5(P) Gi0/6(P)
-    pattern_port = re.compile(r"((?:Gi|Te|Po)\S+)\s+up\s+up\s*(.*)")    # (Gi0/6) up up (AK7137 BS: ALG005 AK7160)
-    port_tag = {}
-    for line in dev.show_description_log.splitlines():
-        match = re.search(pattern_port, line)
-        if match:
-            port = match[1]
-            description = match[2]
-            port_tag[port] = description
-        
-    for line in dev.show_lacp_log.splitlines():
-        match = re.search(pattern, line)
-        if match:
-            lag = match[1]
-            lag_members = re.findall(r"(?:Gi|Te)\d/\d{1,2}", line)
-            dev.lag[lag] = {"members": lag_members, "tag": set([port_tag[i] for i in lag_members])}
-
+    if dev.lag:
+        pattern = re.compile(r"((?:Gi|Te)\S+)\s+up\s+up\s*(.*)")
+        for port in dev.lag:
+            log = dev.ssh_conn.send_command(f"show etherchannel {port[2:]} summary | include LACP") # только номер порта
+            lag_members = re.findall(r"(?:Gi|Te)\d/\d{1,2}", log)
+            dev.lag[port]["members"].extend(lag_members)
+            for line in dev.show_description_log.splitlines():
+                match = re.search(pattern, line)
+                if match:
+                    port_gi = match[1]
+                    tag = match[2]
+                    if port_gi in lag_members:
+                       dev.lag[port]["tag"].append(tag)
+            
 
 def pagg_lag_member_tag(dev):
-    pass
-
+    if dev.lag:
+        pattern = re.compile(r"(Gi[0-9/]+)\s+up\s+up\s*(.*)$")
+        for port in dev.lag:
+            log = dev.ssh_conn.send_command(f"show bundle {port} | include Local") 
+            lag_members = re.findall(r"(?:Gi|Te)\d/\d/\d/\d{1,2}", log)
+            dev.lag[port]["members"].extend(lag_members)
+            for line in dev.show_description_log.splitlines():
+                match = re.search(pattern, line)
+                if match:
+                    port_gi = match[1]
+                    tag = match[2]
+                    if port_gi in lag_members:
+                       dev.lag[port]["tag"].append(tag)
+                        
 
 def csg_delete_info(dev):
     delete_mac = []
@@ -678,30 +683,32 @@ def csg_delete_info(dev):
             dev.removed_info.append(f"{dev.bs[i]['vlan']}:{i}")
             del dev.bs[i]
             
-    lacp_members = re.findall(r"(?:Gi|Te)\d/\d{1,2}", dev.show_lacp_log)
-    for m in lacp_members:
-        if dev.port_bs.get(m):
-            del dev.port_bs[m]
+    if dev.lag:
+        for lag_info in dev.lag.values():
+            for port in lag_info["members"]:
+                if dev.port_bs.get(port):
+                    del dev.port_bs[port]
  
 
 def pagg_delete_info(dev):
     delete_mac = []
     
     for mac, bs_info in dev.bs.items():
-        if any([inf in dev.exclude_inf for inf in bs_info["if_vlan"]]):
+        if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
-        if len(bs_info["vlan"]) == 1:
-            delete_mac.append(mac)
+            if len(bs_info["vlan"]) > 2:
+                print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
 
     if delete_mac:
-        print(f"{dev.hostname:39}{[' '.join(dev.bs[mac]['if_vlan']) for mac in delete_mac]} is removed from dev.bs")
         for i in set(delete_mac):
+            dev.removed_info.append(f"{dev.bs[i]['vlan']}:{i}")
             del dev.bs[i]
             
-    lacp_members = re.findall(r"Gi0/\d/\d/\d{1,2}", dev.show_lacp_log)
-    for m in lacp_members:
-        if dev.port_bs.get(m):
-            del dev.port_bs[m] 
+    if dev.lag:
+        for lag_info in dev.lag.values():
+            for port in lag_info["members"]:
+                if dev.port_bs.get(port):
+                    del dev.port_bs[port]
 
 
 def csg_define_pagg(dev):
@@ -799,13 +806,7 @@ def csg_make_config(dev):
 def pagg_make_config(dev):
     for port, port_info in dev.port_bs.items():
         if set(port_info["bs"]) != set(port_info["bs_from_device"]):
-            dev.commands.append(f"interface {port}")
-            dev.commands.append(f"description {port_info['tag']} BS: {port_info['short_bs_descr']}")
-
-    for inf, inf_info in dev.ifvlan_bs.items():
-        if set(inf_info["bs"]) != set(inf_info["bs_from_device"]):
-            dev.commands.append(f"interface {inf}")
-            dev.commands.append(f"description {inf_info['tag']} BS: {inf_info['short_bs_descr']}")
+            dev.commands.append(f"interface {port} description {port_info['tag']} BS: {port_info['short_bs_descr']}")
 
 
 def too_long_description(dev):
@@ -862,7 +863,7 @@ def connect_dev(my_username, my_password, dev_queue, bs_dict, settings):
                 break
 
             except Exception as err_msg:
-                if i == 2:  # tries
+                if i == 1:  # tries
                     dev.connection_status = False
                     dev.connection_error_msg = str(err_msg)
                     print(f"{dev.hostname:23}{dev.ip_address:16}{'BREAK connection failed':20} i={i}")
@@ -902,8 +903,26 @@ def test_connect_dev(dev, settings):
 def test_connect(dev_queue, settings):
     dev = dev_queue.get()
     test_connect_dev(dev, settings)
+    dev.show_commands()
     define_inf_exclude(dev)
-    dev.parse(dev)
+    dev.parse(dev, bs_dict)
+    dev.lag_member_tag(dev)
+    dev.delete_info(dev)
+    description_bs_parse(dev)
+    dev.define_port_bs(dev)
+    shorten_bs(dev)
+    dev.make_config(dev)
+    too_long_description(dev)
+    dev_queue.task_done()
+    
+def test_connect2(my_username, my_password, dev_queue, bs_dict, settings):
+    dev = dev_queue.get()
+    dev.ssh_conn = ConnectHandler(device_type=dev.os_type, ip=dev.ip_address, username=my_username, password=my_password)
+    dev.show_commands()
+    define_inf_exclude(dev)
+    dev.parse(dev, bs_dict)
+    dev.lag_member_tag(dev)
+    dev.delete_info(dev)
     description_bs_parse(dev)
     dev.define_port_bs(dev)
     shorten_bs(dev)
@@ -938,7 +957,8 @@ print("---------------------- --------------- ----------------------------------
 
 for i in range(argv_dict["maxth"]):
     thread = Thread(target=connect_dev, args=(username, password, q, mac_bs, argv_dict))
-    # th = Thread(target=test_connect, args=(q, mac_bs, argv_dict))
+    # thread = Thread(target=test_connect, args=(q, mac_bs, argv_dict))
+    # thread = Thread(target=test_connect2, args=(username, password, q, mac_bs, argv_dict))
     thread.setDaemon(True)
     thread.start()
 
