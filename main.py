@@ -4,13 +4,17 @@ import queue
 import re
 from threading import Thread
 from pprint import pformat
-from openpyxl import load_workbook, Workbook
+from openpyxl import load_workbook, Workbook, styles
 from getpass import getpass
 from sys import argv
 from datetime import datetime
 from pathlib import Path
 from netmiko import ConnectHandler
-from netmiko.ssh_exception import NetMikoTimeoutException
+from netmiko.ssh_exception import NetMikoTimeoutException, SSHException
+
+# решение проблемы при подключении к IOS XR
+import logging
+logging.getLogger('paramiko.transport').disabled = True 
 
 
 #######################################################################################
@@ -123,10 +127,13 @@ class PaggXR(CellSiteGateway):
 
     def show_commands(self):
         self.show_arp_log = self.ssh_conn.send_command(r"show arp vrf MA | exclude Interface")
-        self.show_description_log = self.ssh_conn.send_command(r'show interfaces description')
+        self.show_description_log = self.ssh_conn.send_command('show interfaces description')
+        self.show_mac_log = \
+            self.ssh_conn.send_command("show l2vpn forwarding bridge-domain mac-address location 0/0/CPU0")
 
     def parse(self, dev, bs_dict):
         pagg_arp_log_parse(dev, bs_dict)
+        pagg_mac_log_parse(dev)     # после arp
         pagg_description_parse(dev)
 
     def lag_member_tag(self, dev):
@@ -210,8 +217,6 @@ class PaggXE(CellSiteGateway):
         self.removed_info = []
         self.commands = []
         self.configuration_log = []   
-        
-        
         
 
 #######################################################################################
@@ -373,27 +378,56 @@ def export_excel(devs, current_time, log_folder):
         if dev.connection_status:
             for port, port_info in dev.port_bs.items():
                 if dev.lag.get(port):
-                    sheet.append([dev.pagg,
-                                  dev.hostname,
-                                  dev.ip_address,
-                                  f'{port} ({len(dev.lag[port]["members"])} Gps)',
-                                  f'{" ".join(set(dev.lag[port]["tag"]))}',
-                                  ' '.join(port_info["bs"])])
-                else:
-                    if "Te" in port and dev.show_tengig_bw == "1G":
+                    if len(port_info["bs"]) > 0:
                         sheet.append([dev.pagg,
                                       dev.hostname,
                                       dev.ip_address,
-                                      f'{port} (1 Gps)', 
-                                      port_info["tag"],
+                                      f'{port} ({len(dev.lag[port]["members"])} Gps)',
+                                      f'{" ".join(set(dev.lag[port]["tag"]))}',
                                       ' '.join(port_info["bs"])])
                     else:
                         sheet.append([dev.pagg,
                                       dev.hostname,
                                       dev.ip_address,
-                                      port, 
-                                      port_info["tag"],
-                                      ' '.join(port_info["bs"])])
+                                      f'{port} ({len(dev.lag[port]["members"])} Gps)',
+                                      f'{" ".join(set(dev.lag[port]["tag"]))}',
+                                      "",
+                                      "no bs"
+                                      ])
+
+                else:
+                    if "Te" in port and dev.show_tengig_bw == "1G":
+                        if len(port_info["bs"]) > 0:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          f'{port} (1 Gps)',
+                                          port_info["tag"],
+                                          ' '.join(port_info["bs"])])
+                        else:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          f'{port} (1 Gps)',
+                                          port_info["tag"],
+                                          "",
+                                          "no bs"])
+                    else:
+                        if len(port_info["bs"]) > 0:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          port,
+                                          port_info["tag"],
+                                          ' '.join(port_info["bs"])])
+                        else:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          port,
+                                          port_info["tag"],
+                                          "",
+                                          "no bs"])
         else:
             sheet.append([dev.pagg,
                           dev.hostname,
@@ -402,6 +436,29 @@ def export_excel(devs, current_time, log_folder):
                           "-",
                           "-",
                           "unavailable"])
+
+    # merge same column
+    for c in [1, 2, 3]:  # PAGG, CSG hostname, CSG loopback0
+        r = 2
+        start_r = 0
+        while True:
+            r += 1
+            cell = sheet.cell(row=r, column=c).value
+            previous_cell = sheet.cell(row=r - 1, column=c).value
+            if cell:
+                if cell == previous_cell:
+                    start_r += 1
+                else:
+                    if start_r > 0:
+                        sheet.merge_cells(start_row=r - 1 - start_r, start_column=c, end_row=r - 1, end_column=c)
+                        sheet.cell(row=r - 1 - start_r, column=c).alignment = styles.Alignment(vertical='center')
+                        start_r = 0
+
+            else:
+                if start_r > 0:
+                    sheet.merge_cells(start_row=r - 1 - start_r, start_column=c, end_row=r - 1, end_column=c)
+                    sheet.cell(row=r - 1 - start_r, column=c).alignment = styles.Alignment(vertical='center')
+                break
 
     wb.save(filename)
 
@@ -457,7 +514,7 @@ def export_device_info(dev, export_file):
     
     export_file.write("-" * 80 + "\n")
     export_file.write("device.exclude_inf\n\n")
-    export_file.write(pformat(dev.exclude_inf))
+    export_file.write(" ".join(dev.exclude_inf))
     export_file.write("\n\n")
     
     export_file.write("-" * 80 + "\n")
@@ -472,7 +529,7 @@ def define_inf_exclude(dev):
     dev.exclude_inf.extend([str(i) for i in range(2020, 2099)])  # SMART METERING
 
     for line in dev.show_isis_neighbors_log.splitlines():
-        match = re.search(r".*L2 +Vl(\d+) +", line) # akta-040001-pag L2 Vl(200) 10.238.121.65
+        match = re.search(r".*L2 +Vl(\d+) +", line)     # akta-040001-pag L2 Vl(200) 10.238.121.65
         if match:
             dev.exclude_inf.append(match[1])
 
@@ -509,7 +566,7 @@ def xe_mac_log_parse(dev, bs_dict):
     for line in dev.show_mac_log.splitlines():
         match = re.search(pattern, line)
         if match:
-            vlan = match[1] # продублировать в if_vlan
+            vlan = match[1]     # продублировать в if_vlan
             mac = match[2]
             port = match[3]
             
@@ -530,6 +587,7 @@ def xe_mac_log_parse(dev, bs_dict):
             if "Po" in port:
                 dev.lag[port] = {"members": [], "tag": []}
 
+
 def csg_arp_log_parse(dev):
     pattern = re.compile(r"Internet\s+\d+\.\d+\.\d+\.\d+\s+\d+\s+(\w{4}\.\w{4}\.\w{4})\s+ARPA\s+Vlan(\d+)")
     # Internet  10.165.161.87          11   (d849.0b95.af44)  ARPA   Vlan(1000)
@@ -545,13 +603,16 @@ def csg_arp_log_parse(dev):
 
 
 def pagg_arp_log_parse(dev, bs_dict):
-    pattern = re.compile(r"\d+\.\d+\.\d+\.\d+\s+[0-9:]{8}\s+(\w{4}\.\w{4}\.\w{4})\s+Dynamic\s+ARPA\s+"
-                         r"([-A-Za-z]+)([0-9/]+)\.(\d+)$")
+    pattern = re.compile(r"(\w{4}\.\w{4}\.\w{4}) +Dynamic +ARPA +([-A-Za-z]+)([0-9/]+)\.(\d+)$")
     # 10.146.56.1     00:02:06   (883f.d304.e2a1)  Dynamic    ARPA  (GigabitEthernet)(0/0/0/5).(1080)
     # 10.164.24.243   00:02:11   (845b.1260.9241)  Dynamic    ARPA  (Bundle-Ether)(10).(1004)
 
+    pattern_bvi = re.compile(r"(\w{4}\.\w{4}\.\w{4}) +Dynamic +ARPA +BVI(\d+)")
+    # 10.165.192.178  00:00:48   (d849.0b8a.dcd1)  Dynamic    ARPA  BVI(1000)
+
     for line in dev.show_arp_log.splitlines():
-        match = re.search(pattern, line)  # ip mac inf_vlan
+        match = re.search(pattern, line)
+        match_bvi = re.search(pattern_bvi, line)
         if match:
             mac = match[1]              # 883f.d304.e2a1
             port_ethernet = match[2]    # GigabitEthernet
@@ -570,20 +631,56 @@ def pagg_arp_log_parse(dev, bs_dict):
             elif port_ethernet == "GigabitEthernet":
                 port_ethernet = "Gi"
             else:
-                print(f"{dev.hostname:39}:pagg_arp_log_parse: Gi,Te,Be not in {port_ethernet}")
+                print(f"{dev.hostname:39}pagg_arp_log_parse: Gi,Te,Be not in {port_ethernet}")
 
             if dev.bs.get(mac):
-                dev.bs[mac]["if_vlan"].append(vlan)
                 dev.bs[mac]["vlan"].append(vlan)
             else:
                 dev.bs[mac] = {"port": f'{port_ethernet}{port_number}',
-                               "if_vlan": [vlan],
+                               "if_vlan": [],
                                "vlan": [vlan],
                                "bs_id": bs}
                                
             if port_ethernet == "BE":
                 dev.lag[f"{port_ethernet}{port_number}"] = {"members": [], "tag": []}
-    
+
+        if match_bvi:
+            mac = match_bvi[1]
+            bvi = match_bvi[2]
+
+            if bs_dict.get(mac):
+                bs = bs_dict[mac]
+            else:
+                bs = mac
+
+            if dev.bs.get(mac):
+                dev.bs[mac]["if_vlan"].append(bvi)
+            else:
+                dev.bs[mac] = {"port": '',
+                               "if_vlan": [bvi],
+                               "bs_id": bs}
+
+
+def pagg_mac_log_parse(dev):
+    pattern = re.compile(r"(\w{4}\.\w{4}\.\w{4}) +dynamic +(Gi[0-9/]+)\.(\d+)")
+    # (688f.845f.bf7d) dynamic (Gi0/0/0/18).(1000)   N/A  17 Mar 21:05:41  N/A
+
+    for line in dev.show_mac_log.splitlines():
+        match = re.search(pattern, line)
+        if match:
+            mac = match[1]
+            port = match[2]
+            bvi = match[3]      # для проверки
+
+            if dev.bs.get(mac):
+                dev.bs[mac]["port"] = port
+
+                if bvi not in dev.bs[mac]["if_vlan"]:
+                    print(f"{dev.hostname:39}pagg_mac_log_parse: {bvi} is not in dev.bs.ifvlan")
+
+            else:
+                print(f"{dev.hostname:39}pagg_mac_log_parse: {mac} is not in dev.bs")
+
 
 def csg_description_parse(dev):
     pattern_port = re.compile(r"((?:Gi|Te|Po)\S+)\s+up\s+up\s*(.*)")  # (Gi0/6) up up (AK7137 BS: ALG005 AK7160)
@@ -732,9 +829,12 @@ def pagg_description_parse(dev):
     # Gi0/0/0/5.1000  up  up  AU7104
     pattern_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")
     # (AU7104) BS: (ZHA012)
+    pattern_bvi = re.compile(r"BV(\d+) +up +up *(.*)$")
+    pattern_bvi_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")
 
     for line in dev.show_description_log.splitlines():
         match = re.search(pattern, line)
+        match_bvi = re.search(pattern_bvi, line)
         if match:
             port = match[1]
             description = match[2]
@@ -764,6 +864,38 @@ def pagg_description_parse(dev):
                                              "short_bs_descr": "",
                                              "short_bs_from_device": "",
                                              "bs_from_device": []}
+
+        elif match_bvi:
+            bvi = match_bvi[1]
+            description = match_bvi[2]
+            tag = ""
+            if bvi not in dev.exclude_inf and not any(i in line for i in dev.description_exclude):
+                for m in ["ABIS", "IUB", "OAM", "S1U", "S1MME", "X2", "S1C"]:
+                    if m in description:
+                        tag = m
+                        break
+                if tag == "":
+                    print(f"{dev.hostname:39}no ABIS,X2,IUB,S1MME,S1U,S1C,OAM in description interface vlan{bvi}")
+                if "BS:" in description:
+                    match_bvi_tag_bs = re.search(pattern_bvi_tag_bs, description)
+                    if match_bvi_tag_bs:
+                        bs = match_bvi_tag_bs[1]
+                        dev.ifvlan_bs[bvi] = {"tag": tag,
+                                              "bs": [],
+                                              "short_bs_descr": "",
+                                              "short_bs_from_device": bs,
+                                              "bs_from_device": []}
+                    else:
+                        print(f"{dev.hostname:39}{match_bvi_tag_bs} re match error")
+                else:
+                    if len(description) > 0 and tag != "":
+                        dev.ifvlan_bs[bvi] = {"tag": tag,
+                                              "bs": [],
+                                              "short_bs_descr": "",
+                                              "short_bs_from_device": "",
+                                              "bs_from_device": []}
+                    else:
+                        print(f"{dev.hostname:39}no description interface vlan{bvi}")
 
 
 def description_bs_parse(dev):
@@ -802,7 +934,7 @@ def csg_lag_member_tag(dev):
     if dev.lag:
         pattern = re.compile(r"((?:Gi|Te)\S+)\s+up\s+up\s*(.*)")
         for port in dev.lag:
-            log = dev.ssh_conn.send_command(f"show etherchannel {port[2:]} summary | include LACP") # только номер порта
+            log = dev.ssh_conn.send_command(f"show etherchannel {port[2:]} summary | include LACP")     # номер порта
             lag_members = re.findall(r"(?:Gi|Te)\d/\d{1,2}", log)
             dev.lag[port]["members"].extend(lag_members)
             for line in dev.show_description_log.splitlines():
@@ -811,7 +943,7 @@ def csg_lag_member_tag(dev):
                     port_gi = match[1]
                     tag = match[2]
                     if port_gi in lag_members:
-                       dev.lag[port]["tag"].append(tag)
+                        dev.lag[port]["tag"].append(tag)
     
     
 def xe_lag_member_tag(dev):
@@ -827,7 +959,7 @@ def xe_lag_member_tag(dev):
                     port_gi = match[1]
                     tag = match[2]
                     if port_gi in lag_members:
-                       dev.lag[port]["tag"].append(tag)
+                        dev.lag[port]["tag"].append(tag)
             
 
 def pagg_lag_member_tag(dev):
@@ -843,7 +975,7 @@ def pagg_lag_member_tag(dev):
                     port_gi = match[1]
                     tag = match[2]
                     if port_gi in lag_members:
-                       dev.lag[port]["tag"].append(tag)
+                        dev.lag[port]["tag"].append(tag)
                         
 
 def csg_delete_info(dev):
@@ -920,10 +1052,17 @@ def pagg_port_bs(dev):
     for bs_info in dev.bs.values():
         port = bs_info["port"]
         bs = bs_info["bs_id"]
+        bvi_list = bs_info["if_vlan"]
         if dev.port_bs.get(port):
             dev.port_bs[port]["bs"].append(bs)
         else:
-            print(f"{dev.hostname:39} port not in port_bs dict")
+            print(f"{dev.hostname:39}port not in port_bs dict")
+
+        for bvi in bvi_list:
+            if dev.ifvlan_bs.get(bvi):
+                dev.ifvlan_bs[bvi]["bs"].append(bs)
+            else:
+                print(f"{dev.hostname:39}{bvi} vlan not in ifvlan_bs dict")
 
 
 def shorten_bs(dev):
@@ -1001,6 +1140,11 @@ def pagg_make_config(dev):
         if set(port_info["bs"]) != set(port_info["bs_from_device"]):
             dev.commands.append(f"interface {port} description {port_info['tag']} BS: {port_info['short_bs_descr']}")
 
+    for bvi, bvi_info in dev.ifvlan_bs.items():
+        if set(bvi_info["bs"]) != set(bvi_info["bs_from_device"]):
+            dev.commands.append(f"interface BVI{bvi}")
+            dev.commands.append(f"description {bvi_info['tag']} BS: {bvi_info['short_bs_descr']}")
+
 
 def too_long_description(dev):
     for cmd in dev.commands:
@@ -1054,9 +1198,15 @@ def connect_dev(my_username, my_password, dev_queue, bs_dict, settings):
                 print(f"{dev.hostname:23}{dev.ip_address:16}timeout")
                 dev_queue.task_done()
                 break
+                 
+            except SSHException:
+                i += 1
+                dev.reset()
+                print(f"{dev.hostname:23}{dev.ip_address:16}SSHException occurred \t i={i}")
+                time.sleep(5)
 
             except Exception as err_msg:
-                if i == 1:  # tries
+                if i == 2:  # tries
                     dev.connection_status = False
                     dev.connection_error_msg = str(err_msg)
                     print(f"{dev.hostname:23}{dev.ip_address:16}{'BREAK connection failed':20} i={i}")
@@ -1065,7 +1215,7 @@ def connect_dev(my_username, my_password, dev_queue, bs_dict, settings):
                 else:
                     i += 1
                     dev.reset()
-                    print(f"{dev.hostname:23}{dev.ip_address:16}{'ERROR connection failed':20} i={i}")
+                    print(f"{dev.hostname:23}{dev.ip_address:16}ERROR connection failed \t i={i}")
                     time.sleep(5)
 
 
@@ -1098,7 +1248,7 @@ def test_connect(dev_queue, settings):
     test_connect_dev(dev, settings)
     dev.show_commands()
     define_inf_exclude(dev)
-    dev.parse(dev, bs_dict)
+    dev.parse(dev)
     dev.lag_member_tag(dev)
     dev.delete_info(dev)
     description_bs_parse(dev)
@@ -1107,10 +1257,12 @@ def test_connect(dev_queue, settings):
     dev.make_config(dev)
     too_long_description(dev)
     dev_queue.task_done()
-    
+
+
 def test_connect2(my_username, my_password, dev_queue, bs_dict, settings):
     dev = dev_queue.get()
-    dev.ssh_conn = ConnectHandler(device_type=dev.os_type, ip=dev.ip_address, username=my_username, password=my_password)
+    dev.ssh_conn = ConnectHandler(device_type=dev.os_type, ip=dev.ip_address,
+                                  username=my_username, password=my_password)
     dev.show_commands()
     define_inf_exclude(dev)
     dev.parse(dev, bs_dict)
@@ -1121,6 +1273,8 @@ def test_connect2(my_username, my_password, dev_queue, bs_dict, settings):
     shorten_bs(dev)
     dev.make_config(dev)
     too_long_description(dev)
+    configure(dev, settings)
+    dev.ssh_conn.disconnect()
     dev_queue.task_done()
 
 
