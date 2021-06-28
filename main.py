@@ -7,7 +7,7 @@ from pprint import pformat
 from openpyxl import load_workbook, Workbook, styles
 from getpass import getpass
 from sys import argv
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from netmiko import ConnectHandler
 from netmiko.ssh_exception import NetMikoTimeoutException, SSHException
@@ -29,27 +29,32 @@ class CellSiteGateway:
         self.ssh_conn = None
         self.os_type = "cisco_ios"
 
-        self.connection_status = True  # failed connection status, False if connection fails
-        self.connection_error_msg = ""  # connection error message
+        self.connection_status = True       # failed connection status, False if connection fails
+        self.connection_error_msg = None    # connection error message
 
-        self.show_isis_log = ""
-        self.show_mac_log = ""
-        self.show_arp_log = ""
-        self.show_description_log = ""
-        self.show_isis_neighbors_log = ""
-        self.show_tengig_bw_log = ""
-        self.show_tengig_bw = None     # False: 1G, True: 10G
+        self.show_isis_log = None
+        self.show_mac_log = None
+        self.show_arp_log = None
+        self.show_description_log = None
+        self.show_isis_neighbors_log = None
+        self.show_tengig_bw_log = None
+        self.show_tengig_bw = None     # 1G or None
 
         self.pagg = "-"
         self.exclude_inf = []  # exclude interface vlans
         self.description_exclude = ["UPLINK", "DOWNLINK", "csg", "pagg", "ACCESS", "MGMT", "MNG", "ME"]
-        self.bs = {}  # mac : {"bs_id":,"port":, "if_vlan": [], "vlan": []}
-        # {48fd.8e05.6fa7: {port: Gi0/8, inf: [1000-1005], bs: AL7410}}
+
+        # database gathered from show_mac show_arp
+        self.bs = {}    # mac : {bs_id:, port:, if_vlan: [], vlan: []}
+        # {48fd.8e05.6fa7: {bs_id: AL7777, port: Gi0/8, inf: [1000-1005], bs: AL7410}}
+
+        # database gathered from show_description
         self.port_bs = {}  # {port: [bs1, bs2]}       {Gi0/8: [AL7374_7008_7007, ALR746]}
         self.ifvlan_bs = {}  # {int vlan: [bs1, bs2]}    {1000: [AL7374_7008_7007, ALR746]}
+
         self.lag = {}   # Po1 : [members : Gi0/4 Gi0/5, tag: AU7070 Po1, AU7070 Po1]
         self.removed_info = []  # from def delete_info
-        
+
         self.commands = []
         self.configuration_log = []
 
@@ -61,8 +66,8 @@ class CellSiteGateway:
         self.show_description_log = self.ssh_conn.send_command(r"show interfaces description")
         self.show_tengig_bw_log = self.ssh_conn.send_command(r"show interfaces te0/0 | in BW")
 
-    def parse(self, dev, bs_dict):
-        csg_mac_log_parse(dev, bs_dict)
+    def parse(self, dev, bs_dict, bs_dict_backup):
+        csg_mac_log_parse(dev, bs_dict, bs_dict_backup)
         csg_arp_log_parse(dev)
         csg_define_pagg(dev)
         csg_description_parse(dev)
@@ -70,18 +75,18 @@ class CellSiteGateway:
 
     def delete_info(self, dev):
         csg_delete_info(dev)
-        
+
     def define_port_bs(self, dev):
         csg_port_bs(dev)
-        
+
     def lag_member_tag(self, dev):
-        csg_lag_member_tag(dev)        
+        csg_lag_member_tag(dev)
 
     def make_config(self, dev):
         csg_make_config(dev)
 
-    def configure(self, cmd_list):
-        self.configuration_log.append(self.ssh_conn.send_config_set(cmd_list))
+    def configure(self, cmd):
+        self.configuration_log.append(self.ssh_conn.send_config_set(cmd))
 
     def commit(self):
         try:
@@ -91,14 +96,14 @@ class CellSiteGateway:
             self.configuration_log.append(self.ssh_conn.send_command("\n", expect_string=r"#"))
 
     def reset(self):
-        self.connection_status = True  # failed connection status, False if connection fails
-        self.connection_error_msg = ""  # connection error message
-        self.show_isis_log = ""
-        self.show_mac_log = ""
-        self.show_arp_log = ""
-        self.show_description_log = ""
-        self.show_isis_neighbors_log = ""
-        self.show_tengig_bw_log = ""
+        self.connection_status = True
+        self.connection_error_msg = None
+        self.show_isis_log = None
+        self.show_mac_log = None
+        self.show_arp_log = None
+        self.show_description_log = None
+        self.show_isis_neighbors_log = None
+        self.show_tengig_bw_log = None
         self.show_tengig_bw = None
         self.pagg = "-"
         self.exclude_inf = []
@@ -131,8 +136,8 @@ class PaggXR(CellSiteGateway):
         self.show_mac_log = \
             self.ssh_conn.send_command("show l2vpn forwarding bridge-domain mac-address location 0/0/CPU0")
 
-    def parse(self, dev, bs_dict):
-        pagg_arp_log_parse(dev, bs_dict)
+    def parse(self, dev, bs_dict, bs_dict_backup):
+        pagg_arp_log_parse(dev, bs_dict, bs_dict_backup)
         pagg_mac_log_parse(dev)     # после arp
         pagg_description_parse(dev)
 
@@ -148,83 +153,44 @@ class PaggXR(CellSiteGateway):
     def make_config(self, dev):
         pagg_make_config(dev)
 
-    def reset(self):
-        self.connection_status = True  # failed connection status, False if connection fails
-        self.connection_error_msg = ""  # connection error message
-        self.show_isis_log = ""
-        self.show_mac_log = ""
-        self.show_arp_log = ""
-        self.show_description_log = ""
-        self.show_isis_neighbors_log = ""
-        self.exclude_inf = []
-        self.bs = {}
-        self.port_bs = {}
-        self.ifvlan_bs = {}
-        self.lag = {}
-        self.commands = []
-        self.configuration_log = []
-
 
 class PaggXE(CellSiteGateway):
 
     def __init__(self, ip, host):
         CellSiteGateway.__init__(self, ip, host)
         self.os_type = "cisco_xe"
-        
+
     def show_commands(self):
         self.show_arp_log = self.ssh_conn.send_command(r"show ip arp vrf MA | exclude -|Incomplete")
         self.show_mac_log = self.ssh_conn.send_command(r"show mac-address-table dynamic")
         self.show_description_log = self.ssh_conn.send_command(r"show interfaces description")
 
-    def parse(self, dev, bs_dict):
-        xe_mac_log_parse(dev, bs_dict)
+    def parse(self, dev, bs_dict, bs_dict_backup):
+        xe_mac_log_parse(dev, bs_dict, bs_dict_backup)
         xe_description_parse(dev)
 
     def delete_info(self, dev):
         csg_delete_info(dev)
-        
+
     def define_port_bs(self, dev):
         csg_port_bs(dev)
-        
+
     def lag_member_tag(self, dev):
-        xe_lag_member_tag(dev)        
+        xe_lag_member_tag(dev)
 
     def make_config(self, dev):
         xe_make_config(dev)
 
-    def configure(self, cmd_list):
-        self.configuration_log.append(self.ssh_conn.send_config_set(cmd_list))
-
     def commit(self):
         self.configuration_log.append(self.ssh_conn.save_config())
 
-    def reset(self):
-        self.connection_status = True  # failed connection status, False if connection fails
-        self.connection_error_msg = ""  # connection error message
-        self.show_isis_log = ""
-        self.show_mac_log = ""
-        self.show_arp_log = ""
-        self.show_description_log = ""
-        self.show_isis_neighbors_log = ""
-        self.show_tengig_bw_log = ""
-        self.show_tengig_bw = None
-        self.pagg = "-"
-        self.exclude_inf = []
-        self.bs = {}
-        self.port_bs = {}
-        self.ifvlan_bs = {}
-        self.lag = {}
-        self.removed_info = []
-        self.commands = []
-        self.configuration_log = []   
-        
 
 #######################################################################################
 # ------------------------------ def function part -----------------------------------#
 #######################################################################################
 
 
-def get_argv(arguments):
+def get_arguments(arguments):
     settings = {"maxth": 10, "conf": False, "os_type": "cisco_ios"}
     mt_pattern = re.compile(r"mt([0-9]+)")
     for arg in arguments:
@@ -238,9 +204,12 @@ def get_argv(arguments):
             settings["os_type"] = "cisco_xr"
         elif arg == "xe" or arg == "XE":
             settings["os_type"] = "cisco_xe"    
-            
-    print()
-    print(f"max threads: {settings['maxth']}  configuration mode: {settings['conf']}  ios: {settings['os_type']}\n")
+
+    print("\n"
+          f"max threads:...................{settings['maxth']}\n"
+          f"config mode:...................{settings['conf']}\n"
+          f"OS:............................{settings['os_type']}\n"
+          )
     return settings
 
 
@@ -250,88 +219,30 @@ def get_user_pw():
     return user, psw
 
 
-def get_devinfo(yaml_file, args):
+def get_device_info(yaml_file, settings):
     devs = []
     with open(yaml_file, "r") as file:
         devices_info = yaml.load(file, yaml.SafeLoader)
-        if args["os_type"] == "cisco_ios":
+        if settings["os_type"] == "cisco_ios":
             for hostname, ip_address in devices_info.items():
                 dev = CellSiteGateway(ip=ip_address, host=hostname)
                 devs.append(dev)
-        elif args["os_type"] == "cisco_xr":
+        elif settings["os_type"] == "cisco_xr":
             for hostname, ip_address in devices_info.items():
                 dev = PaggXR(ip=ip_address, host=hostname)
                 devs.append(dev)
-        elif args["os_type"] == "cisco_xe":
+        elif settings["os_type"] == "cisco_xe":
             for hostname, ip_address in devices_info.items():
                 dev = PaggXE(ip=ip_address, host=hostname)
                 devs.append(dev)
-    print()
+
     return devs
-
-
-def write_logs(devs, current_time, log_folder, export_device_info, export_excel, settings):
-    failed_conn_count = 0
-    export_excel(devs, current_time, log_folder)
-
-    conn_msg_filename = log_folder / f"{current_time}_connection_error_msg.txt"
-    conn_msg_filename_file = open(conn_msg_filename, "w")
-    device_info_filename = log_folder / f"{current_time}_device_info.txt"
-    device_info_filename_file = open(device_info_filename, "w")
-    config_filename = log_folder / f"{current_time}_configuration_log.txt"
-    config_filename_file = open(config_filename, "w")
-    commands_filename = log_folder / f"{current_time}_configuration_needed.txt"
-    commands_filename_file = open(commands_filename, "w")
-    removed_filename = log_folder / f"{current_time}_removed_info.txt"
-    removed_filename_file = open(removed_filename, "w")
-
-    for dev in devs:
-        if dev.connection_status:
-            export_device_info(dev, device_info_filename_file)  # export device info: show, status, etc
-        else:
-            failed_conn_count += 1
-            conn_msg_filename_file.write("-" * 80 + "\n")
-            conn_msg_filename_file.write(f"### {dev.hostname} : {dev.ip_address} ###\n\n")
-            conn_msg_filename_file.write(f"{dev.connection_error_msg}\n")
-            config_filename_file.write("\n\n")
-            
-        if settings["conf"] and dev.commands:
-            config_filename_file.write("#" * 80 + "\n")
-            config_filename_file.write(f"### {dev.hostname} : {dev.ip_address} ###\n\n")
-            config_filename_file.write("".join(dev.configuration_log))
-            config_filename_file.write("\n\n")
-        elif not settings["conf"] and dev.commands:
-            commands_filename_file.write(f"### {dev.hostname} : {dev.ip_address}\n\n")
-            commands_filename_file.write("\n".join(dev.commands))
-            commands_filename_file.write("\n\n\n")
-            
-        if dev.removed_info:
-            removed_filename_file.write(f"{dev.hostname}\t{' '.join(dev.removed_info)}\n")
-
-    conn_msg_filename_file.close()
-    device_info_filename_file.close()
-    config_filename_file.close()
-    commands_filename_file.close()
-    removed_filename_file.close()
-
-    if not settings["conf"]:
-        config_filename.unlink()
-    if all([dev.connection_status is True for dev in devs]):
-        conn_msg_filename.unlink()
-
-    return failed_conn_count
-
-
-#######################################################################################
-# ------------------------------ get bs port -----------------------------------------#
-#######################################################################################
 
 
 def load_excel(curr_date, curr_time):
     excel_file = input("Enter IP-MAC excel file (by default no excel file is loaded): ")
-    print()
     result = {}  # mac : bs
-    if len(excel_file) > 0:
+    if excel_file:
         wb = load_workbook(excel_file)
         first_sheet = wb.sheetnames[0]
         sheet = wb[first_sheet]
@@ -350,18 +261,87 @@ def load_excel(curr_date, curr_time):
             else:
                 break
 
+        with open("mac_bs_backup.yaml") as f:
+            yaml_file_backup = yaml.load(f, yaml.SafeLoader)
+
+        with open("mac_bs_backup.yaml", "a") as file_backup:
+            # update backup mac-bs file
+            result_keys = result.keys()
+            yaml_file_backup_keys = yaml_file_backup.keys()
+            diff_keys = [y for y in result_keys if y not in yaml_file_backup_keys]
+
+            file_backup.write(f"\n# {curr_date} {curr_time}\n")
+            for diff_key in diff_keys:
+                file_backup.write(f"{diff_key} : {result[diff_key]}\n")
+
         with open("mac_bs.yaml", "w") as output_file:
             output_file.write(f"# {curr_date} {curr_time}\n\n")
             for i, j in result.items():
                 output_file.write(f"{i} : {j}\n")
 
+        print("mac_bs.yaml, mac_bs_backup.yaml are created")
     else:
         with open("mac_bs.yaml", "r") as file:
             yaml_file = yaml.load(file, yaml.SafeLoader)
             result.update(yaml_file)
 
-    return result
-    
+        print("previous mac_bs.yaml is used")
+
+    return result, yaml_file_backup
+
+
+def write_logs(devices, current_time, log_folder, settings):
+    failed_conn_count = 0
+    export_excel(devices, current_time, log_folder)
+
+    conn_msg = log_folder / f"{current_time}_connection_error_msg.txt"
+    device_info = log_folder / f"{current_time}_device_info.txt"
+    config = log_folder / f"{current_time}_configuration_log.txt"
+    commands = log_folder / f"{current_time}_configuration_needed.txt"
+    removed = log_folder / f"{current_time}_removed_info.txt"
+
+    conn_msg_file = open(conn_msg, "w")
+    device_info_file = open(device_info, "w")
+    config_file = open(config, "w")
+    commands_file = open(commands, "w")
+    removed_file = open(removed, "w")
+
+    for device in devices:
+        if device.connection_status:
+            export_device_info(device, device_info_file)  # export device info: show, status, etc
+        else:
+            failed_conn_count += 1
+            conn_msg_file.write("-" * 80 + "\n")
+            conn_msg_file.write(f"### {device.hostname} : {device.ip_address} ###\n\n")
+            conn_msg_file.write(f"{device.connection_error_msg}\n")
+            config_file.write("\n\n")
+            
+        if settings["conf"] and device.commands:
+            config_file.write("#" * 80 + "\n")
+            config_file.write(f"### {device.hostname} : {device.ip_address} ###\n\n")
+            config_file.write("".join(device.configuration_log))
+            config_file.write("\n\n")
+        elif not settings["conf"] and device.commands:
+            commands_file.write(f"### {device.hostname} : {device.ip_address}\n\n")
+            commands_file.write("\n".join(device.commands))
+            commands_file.write("\n\n\n")
+            
+        if device.removed_info:
+            removed_file.write(f"{device.hostname}\t{' '.join(device.removed_info)}\n")
+
+    conn_msg_file.close()
+    device_info_file.close()
+    config_file.close()
+    commands_file.close()
+    removed_file.close()
+
+    if not settings["conf"]:
+        config.unlink()
+    if all([dev.connection_status is True for dev in devices]):
+        conn_msg.unlink()
+
+    return failed_conn_count
+
 
 def export_excel(devs, current_time, log_folder):
     filename = log_folder / f"{current_time}_mbh_bs_list.xlsx"
@@ -491,12 +471,12 @@ def export_device_info(dev, export_file):
     export_file.write("device.show_isis_neighbors_log\n\n")
     export_file.write(dev.show_isis_neighbors_log)
     export_file.write("\n\n")
-    
+
     export_file.write("-" * 80 + "\n")
     export_file.write("device.bs\n\n")
     export_file.write(pformat(dev.bs))
     export_file.write("\n\n")
-    
+
     export_file.write("-" * 80 + "\n")
     export_file.write("device.port_bs\n\n")
     export_file.write(pformat(dev.port_bs))
@@ -511,16 +491,21 @@ def export_device_info(dev, export_file):
     export_file.write("device.lag\n\n")
     export_file.write(pformat(dev.lag))
     export_file.write("\n\n")
-    
+
     export_file.write("-" * 80 + "\n")
     export_file.write("device.exclude_inf\n\n")
     export_file.write(" ".join(dev.exclude_inf))
     export_file.write("\n\n")
-    
+
     export_file.write("-" * 80 + "\n")
     export_file.write("device.commands\n\n")
     export_file.write(pformat(dev.commands))
     export_file.write("\n\n")
+
+
+#######################################################################################
+# ------------------------------ get bs port -----------------------------------------#
+#######################################################################################
 
 
 def define_inf_exclude(dev):
@@ -528,25 +513,30 @@ def define_inf_exclude(dev):
     dev.exclude_inf.extend([str(i) for i in range(4000, 4099)])  # MW MGMT
     dev.exclude_inf.extend([str(i) for i in range(2020, 2099)])  # SMART METERING
 
-    for line in dev.show_isis_neighbors_log.splitlines():
-        match = re.search(r".*L2 +Vl(\d+) +", line)     # akta-040001-pag L2 Vl(200) 10.238.121.65
-        if match:
-            dev.exclude_inf.append(match[1])
+    if dev.os_type == "cisco_ios":
+        for line in dev.show_isis_neighbors_log.splitlines():
+            match = re.search(r".*L2 +Vl(\d+) +", line)     # akta-040001-pag L2 Vl(200) 10.238.121.65
+            if match:
+                dev.exclude_inf.append(match[1])
 
 
-def csg_mac_log_parse(dev, bs_dict):
+def csg_mac_log_parse(dev, bs_dict, bs_dict_backup):
     pattern = re.compile(r"(\d+)\s+(\w{4}\.\w{4}\.\w{4})\s+DYNAMIC\s+(\S+)")
     # (3001)    (48fd.8e05.6fa7)    DYNAMIC     (Gi0/8)
     for line in dev.show_mac_log.splitlines():
         match = re.search(pattern, line)
         if match:
-            vlan = match[1]  # 3001
-            mac = match[2]  # 48fd.8e05.6fa7
-            port = match[3]  # Gi0/8
+            vlan = match[1]     # 3001
+            mac = match[2]      # 48fd.8e05.6fa7
+            port = match[3]     # Gi0/8
             if bs_dict.get(mac):
                 bs = bs_dict[mac]
             else:
-                bs = mac
+                if bs_dict_backup.get(mac):
+                    bs = bs_dict_backup[mac]
+                else:
+                    bs = mac
+                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -557,10 +547,11 @@ def csg_mac_log_parse(dev, bs_dict):
                                "vlan": [vlan]}
                                
             if "Po" in port:
-                dev.lag[port] = {"members": [], "tag": []}
+                if dev.lag:
+                    dev.lag[port] = {"members": [], "tag": []}
 
 
-def xe_mac_log_parse(dev, bs_dict):
+def xe_mac_log_parse(dev, bs_dict, bs_dict_backup):
     pattern = re.compile(r"(\d+) +(\w{4}\.\w{4}\.\w{4}) +DYNAMIC +(Gi\d/\d/\d)")
     # (1000)  (18de.d7aa.7264)  DYNAMIC  (Gi0/5/6).Efp1000
     for line in dev.show_mac_log.splitlines():
@@ -573,7 +564,11 @@ def xe_mac_log_parse(dev, bs_dict):
             if bs_dict.get(mac):
                 bs = bs_dict[mac]
             else:
-                bs = mac
+                if bs_dict_backup.get(mac):
+                    bs = bs_dict_backup[mac]
+                else:
+                    bs = mac
+                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -585,7 +580,31 @@ def xe_mac_log_parse(dev, bs_dict):
                                "vlan": [vlan]}
                                
             if "Po" in port:
-                dev.lag[port] = {"members": [], "tag": []}
+                if dev.lag:
+                    dev.lag[port] = {"members": [], "tag": []}
+
+
+def pagg_mac_log_parse(dev):
+    # only for bvi
+    pattern = re.compile(r"(\w{4}\.\w{4}\.\w{4}) +dynamic +(Gi[0-9/]+)\.(\d+)")
+    # (688f.845f.bf7d) dynamic (Gi0/0/0/18).(1000)   N/A  17 Mar 21:05:41  N/A
+
+    if dev.show_mac_log:
+        for line in dev.show_mac_log.splitlines():
+            match = re.search(pattern, line)
+            if match:
+                mac = match[1]
+                port = match[2]
+                bvi = match[3]      # для проверки
+
+                if dev.bs.get(mac):
+                    dev.bs[mac]["port"] = port
+
+                    if bvi not in dev.bs[mac]["if_vlan"]:
+                        print(f"{dev.hostname:39}pagg_mac_log_parse: {bvi} is not in dev.bs.ifvlan")
+
+                else:
+                    print(f"{dev.hostname:39}pagg_mac_log_parse: {mac} is not in dev.bs")
 
 
 def csg_arp_log_parse(dev):
@@ -602,7 +621,7 @@ def csg_arp_log_parse(dev):
                 print(f"{dev.hostname:39}: arp_log_parse - {mac} not in MAC table")
 
 
-def pagg_arp_log_parse(dev, bs_dict):
+def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
     pattern = re.compile(r"(\w{4}\.\w{4}\.\w{4}) +Dynamic +ARPA +([-A-Za-z]+)([0-9/]+)\.(\d+)$")
     # 10.146.56.1     00:02:06   (883f.d304.e2a1)  Dynamic    ARPA  (GigabitEthernet)(0/0/0/5).(1080)
     # 10.164.24.243   00:02:11   (845b.1260.9241)  Dynamic    ARPA  (Bundle-Ether)(10).(1004)
@@ -622,7 +641,11 @@ def pagg_arp_log_parse(dev, bs_dict):
             if bs_dict.get(mac):
                 bs = bs_dict[mac]
             else:
-                bs = mac
+                if bs_dict_backup.get(mac):
+                    bs = bs_dict_backup[mac]
+                else:
+                    bs = mac
+                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
 
             if port_ethernet == "Bundle-Ether":
                 port_ethernet = "BE"
@@ -642,7 +665,8 @@ def pagg_arp_log_parse(dev, bs_dict):
                                "bs_id": bs}
                                
             if port_ethernet == "BE":
-                dev.lag[f"{port_ethernet}{port_number}"] = {"members": [], "tag": []}
+                if dev.lag:
+                    dev.lag[f"{port_ethernet}{port_number}"] = {"members": [], "tag": []}
 
         if match_bvi:
             mac = match_bvi[1]
@@ -651,7 +675,11 @@ def pagg_arp_log_parse(dev, bs_dict):
             if bs_dict.get(mac):
                 bs = bs_dict[mac]
             else:
-                bs = mac
+                if bs_dict_backup.get(mac):
+                    bs = bs_dict_backup[mac]
+                else:
+                    bs = mac
+                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
 
             if dev.bs.get(mac):
                 dev.bs[mac]["if_vlan"].append(bvi)
@@ -661,32 +689,20 @@ def pagg_arp_log_parse(dev, bs_dict):
                                "bs_id": bs}
 
 
-def pagg_mac_log_parse(dev):
-    pattern = re.compile(r"(\w{4}\.\w{4}\.\w{4}) +dynamic +(Gi[0-9/]+)\.(\d+)")
-    # (688f.845f.bf7d) dynamic (Gi0/0/0/18).(1000)   N/A  17 Mar 21:05:41  N/A
-
-    for line in dev.show_mac_log.splitlines():
+def csg_define_pagg(dev):
+    pattern = re.compile(r"[0-9.]{14} ([a-z.]+-\d+-pagg-\d)")
+    for line in dev.show_isis_log.splitlines():
         match = re.search(pattern, line)
         if match:
-            mac = match[1]
-            port = match[2]
-            bvi = match[3]      # для проверки
-
-            if dev.bs.get(mac):
-                dev.bs[mac]["port"] = port
-
-                if bvi not in dev.bs[mac]["if_vlan"]:
-                    print(f"{dev.hostname:39}pagg_mac_log_parse: {bvi} is not in dev.bs.ifvlan")
-
-            else:
-                print(f"{dev.hostname:39}pagg_mac_log_parse: {mac} is not in dev.bs")
+            dev.pagg = match[1]
 
 
 def csg_description_parse(dev):
-    pattern_port = re.compile(r"((?:Gi|Te|Po)\S+)\s+up\s+up\s*(.*)")  # (Gi0/6) up up (AK7137 BS: ALG005 AK7160)
-    pattern_port_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")  # (AK7137) BS: (ALG005 AK7160)
-    pattern_inf = re.compile(r"Vl(\d+)\s+up\s+up\s*(.*)")  # Vl(1000) up up (ABIS BS: ALG005 AK7160)
-    pattern_inf_tag_bs = re.compile(r"(?:.*\s)?BS:\s?(.*)")  # ABIS BS: (ALG005 AK7160)
+    pattern_port = re.compile(r"((?:Gi|Te|Po)\S+)\s+up\s+up\s*(.*)")    # (Gi0/6) up up (AK7137 BS: ALG005 AK7160)
+    pattern_port_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")          # (AK7137) BS: (ALG005 AK7160)
+    pattern_inf = re.compile(r"Vl(\d+)\s+up\s+up\s*(.*)")               # Vl(1000) up up (ABIS BS: ALG005 AK7160)
+    pattern_inf_tag_bs = re.compile(r"(?:.*\s)?BS:\s?(.*)")             # ABIS BS: (ALG005 AK7160)
+
     for line in dev.show_description_log.splitlines():
         match_port = re.search(pattern_port, line)
         match_inf = re.search(pattern_inf, line)
@@ -701,34 +717,34 @@ def csg_description_parse(dev):
                         bs = match_port_tag_bs[2]
                         dev.port_bs[port] = {"tag": f'{tag if tag else ""}',
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": bs,
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": bs,
+                                             "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}{match_port_tag_bs} re match error")
                 else:
                     if len(description) > 0:
                         dev.port_bs[port] = {"tag": description,
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": "",
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": "",
+                                             "bs_on_description": []}
                     else:
                         dev.port_bs[port] = {"tag": "",
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": "",
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": "",
+                                             "bs_on_description": []}
         elif match_inf:
             inf = match_inf[1]
             description = match_inf[2]
-            tag = ""
+            tag = None
             if inf not in dev.exclude_inf and not any(i in line for i in dev.description_exclude):
                 for m in ["ABIS", "IUB", "OAM", "S1U", "S1MME", "X2", "S1C"]:
                     if m in description:
                         tag = m
                         break
-                if tag == "":
+                if tag is None:
                     print(f"{dev.hostname:39}no ABIS,X2,IUB,S1MME,S1U,S1C,OAM in description interface vlan{inf}")
                 if "BS:" in description:
                     match_inf_tag_bs = re.search(pattern_inf_tag_bs, description)
@@ -736,18 +752,18 @@ def csg_description_parse(dev):
                         bs = match_inf_tag_bs[1]
                         dev.ifvlan_bs[inf] = {"tag": tag,
                                               "bs": [],
-                                              "short_bs_descr": "",
-                                              "short_bs_from_device": bs,
-                                              "bs_from_device": []}
+                                              "new_bs_description": "",
+                                              "current_bs_description": bs,
+                                              "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}{match_inf_tag_bs} re match error")
                 else:
-                    if len(description) > 0 and tag != "":
+                    if len(description) > 0 and tag is not None:
                         dev.ifvlan_bs[inf] = {"tag": tag,
                                               "bs": [],
-                                              "short_bs_descr": "",
-                                              "short_bs_from_device": "",
-                                              "bs_from_device": []}
+                                              "new_bs_description": "",
+                                              "current_bs_description": "",
+                                              "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}no description interface vlan{inf}")
 
@@ -772,34 +788,34 @@ def xe_description_parse(dev):
                         bs = match_port_tag_bs[2]
                         dev.port_bs[port] = {"tag": f'{tag if tag else ""}',
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": bs,
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": bs,
+                                             "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}{match_port_tag_bs} re match error")
                 else:
                     if len(description) > 0:
                         dev.port_bs[port] = {"tag": description,
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": "",
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": "",
+                                             "bs_on_description": []}
                     else:
                         dev.port_bs[port] = {"tag": "",
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": "",
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": "",
+                                             "bs_on_description": []}
         elif match_inf:
             inf = match_inf[1]
             description = match_inf[2]
-            tag = ""
+            tag = None
             if inf not in dev.exclude_inf and not any(i in line for i in dev.description_exclude):
                 for m in ["ABIS", "IUB", "OAM", "S1U", "S1MME", "X2", "S1C"]:
                     if m in description:
                         tag = m
                         break
-                if tag == "":
+                if tag is None:
                     print(f"{dev.hostname:39}no ABIS,X2,IUB,S1MME,S1U,S1C,OAM in description interface vlan{inf}")
                 if "BS:" in description:
                     match_inf_tag_bs = re.search(pattern_inf_tag_bs, description)
@@ -807,18 +823,18 @@ def xe_description_parse(dev):
                         bs = match_inf_tag_bs[1]
                         dev.ifvlan_bs[inf] = {"tag": tag,
                                               "bs": [],
-                                              "short_bs_descr": "",
-                                              "short_bs_from_device": bs,
-                                              "bs_from_device": []}
+                                              "new_bs_description": "",
+                                              "current_bs_description": bs,
+                                              "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}{match_inf_tag_bs} re match error")
                 else:
-                    if len(description) > 0 and tag != "":
+                    if len(description) > 0 and tag is not None:
                         dev.ifvlan_bs[inf] = {"tag": tag,
                                               "bs": [],
-                                              "short_bs_descr": "",
-                                              "short_bs_from_device": "",
-                                              "bs_from_device": []}
+                                              "new_bs_description": "",
+                                              "current_bs_description": "",
+                                              "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}no description interface vlan{inf}")
 
@@ -846,35 +862,35 @@ def pagg_description_parse(dev):
                         bs = match_port_tag_bs[2]
                         dev.port_bs[port] = {"tag": f'{tag if tag else ""}',
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": bs,
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": bs,
+                                             "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}{match_port_tag_bs} re match error")
                 else:
                     if len(description) > 0:
                         dev.port_bs[port] = {"tag": description,
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": "",
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": "",
+                                             "bs_on_description": []}
                     else:
                         dev.port_bs[port] = {"tag": "",
                                              "bs": [],
-                                             "short_bs_descr": "",
-                                             "short_bs_from_device": "",
-                                             "bs_from_device": []}
+                                             "new_bs_description": "",
+                                             "current_bs_description": "",
+                                             "bs_on_description": []}
 
         elif match_bvi:
             bvi = match_bvi[1]
             description = match_bvi[2]
-            tag = ""
+            tag = None
             if bvi not in dev.exclude_inf and not any(i in line for i in dev.description_exclude):
                 for m in ["ABIS", "IUB", "OAM", "S1U", "S1MME", "X2", "S1C"]:
                     if m in description:
                         tag = m
                         break
-                if tag == "":
+                if tag is None:
                     print(f"{dev.hostname:39}no ABIS,X2,IUB,S1MME,S1U,S1C,OAM in description interface vlan{bvi}")
                 if "BS:" in description:
                     match_bvi_tag_bs = re.search(pattern_bvi_tag_bs, description)
@@ -882,47 +898,20 @@ def pagg_description_parse(dev):
                         bs = match_bvi_tag_bs[1]
                         dev.ifvlan_bs[bvi] = {"tag": tag,
                                               "bs": [],
-                                              "short_bs_descr": "",
-                                              "short_bs_from_device": bs,
-                                              "bs_from_device": []}
+                                              "new_bs_description": "",
+                                              "current_bs_description": bs,
+                                              "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}{match_bvi_tag_bs} re match error")
                 else:
-                    if len(description) > 0 and tag != "":
+                    if len(description) > 0 and tag is not None:
                         dev.ifvlan_bs[bvi] = {"tag": tag,
                                               "bs": [],
-                                              "short_bs_descr": "",
-                                              "short_bs_from_device": "",
-                                              "bs_from_device": []}
+                                              "new_bs_description": "",
+                                              "current_bs_description": "",
+                                              "bs_on_description": []}
                     else:
                         print(f"{dev.hostname:39}no description interface vlan{bvi}")
-
-
-def description_bs_parse(dev):
-    for port, port_info in dev.port_bs.items():
-        if port_info["short_bs_from_device"]:
-            for i in port_info["short_bs_from_device"].split():
-                if "_" in i:  # AU7311_7069
-                    city = i[:2]  # AU
-                    for j in i.split("_"):  # [AU7311, 7069]
-                        if city in j:
-                            dev.port_bs[port]["bs_from_device"].append(j)
-                        else:
-                            dev.port_bs[port]["bs_from_device"].append(f"{city}{j}")
-                else:
-                    dev.port_bs[port]["bs_from_device"].append(i)  # ALR100
-    for inf, inf_info in dev.ifvlan_bs.items():
-        if inf_info["short_bs_from_device"]:
-            for i in inf_info["short_bs_from_device"].split():
-                if "_" in i:
-                    city = i[:2]
-                    for j in i.split("_"):
-                        if city in j:
-                            dev.ifvlan_bs[inf]["bs_from_device"].append(j)
-                        else:
-                            dev.ifvlan_bs[inf]["bs_from_device"].append(f"{city}{j}")
-                else:
-                    dev.ifvlan_bs[inf]["bs_from_device"].append(i)
 
 
 def csg_tengig_bw_parse(dev):
@@ -985,11 +974,8 @@ def csg_delete_info(dev):
     for mac, bs_info in dev.bs.items():
         if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
-            if mac in dev.show_arp_log and len(bs_info["vlan"]) > 2:
-                print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
-        else:
-            if mac not in dev.show_arp_log and dev.hostname not in dev_exclude:
-                delete_mac.append(mac)
+        elif mac not in dev.show_arp_log and dev.hostname not in dev_exclude:
+            delete_mac.append(mac)
 
     if delete_mac:
         for i in set(delete_mac):
@@ -1009,8 +995,6 @@ def pagg_delete_info(dev):
     for mac, bs_info in dev.bs.items():
         if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
-            if len(bs_info["vlan"]) > 2:
-                print(f"{dev.hostname:39}csg_delete_info: {mac} not in MAC-BS.excel table")
 
     if delete_mac:
         for i in set(delete_mac):
@@ -1024,12 +1008,32 @@ def pagg_delete_info(dev):
                     del dev.port_bs[port]
 
 
-def csg_define_pagg(dev):
-    pattern = re.compile(r"[0-9.]{14} ([a-z.]+-\d+-pagg-\d)")
-    for line in dev.show_isis_log.splitlines():
-        match = re.search(pattern, line)
-        if match:
-            dev.pagg = match[1]
+def description_bs_parse(dev):
+    for port, port_info in dev.port_bs.items():
+        if port_info["current_bs_description"]:
+            for i in port_info["current_bs_description"].split():
+                if "_" in i:  # AU7311_7069
+                    city = i[:2]  # AU
+                    for j in i.split("_"):  # [AU7311, 7069]
+                        if city in j:
+                            dev.port_bs[port]["bs_on_description"].append(j)
+                        else:
+                            dev.port_bs[port]["bs_on_description"].append(f"{city}{j}")
+                else:
+                    dev.port_bs[port]["bs_on_description"].append(i)  # ALR100
+
+    for inf, inf_info in dev.ifvlan_bs.items():
+        if inf_info["current_bs_description"]:
+            for i in inf_info["current_bs_description"].split():
+                if "_" in i:
+                    city = i[:2]
+                    for j in i.split("_"):
+                        if city in j:
+                            dev.ifvlan_bs[inf]["bs_on_description"].append(j)
+                        else:
+                            dev.ifvlan_bs[inf]["bs_on_description"].append(f"{city}{j}")
+                else:
+                    dev.ifvlan_bs[inf]["bs_on_description"].append(i)
 
 
 def csg_port_bs(dev):
@@ -1037,10 +1041,12 @@ def csg_port_bs(dev):
         port = bs_info["port"]
         bs = bs_info["bs_id"]
         ifvlanlist = bs_info["if_vlan"]
+
         if dev.port_bs.get(port):
             dev.port_bs[port]["bs"].append(bs)
         else:
             print(f"{dev.hostname:39}{port} not in port_bs dict")
+
         for ifvlan in ifvlanlist:
             if dev.ifvlan_bs.get(ifvlan):
                 dev.ifvlan_bs[ifvlan]["bs"].append(bs)
@@ -1053,6 +1059,7 @@ def pagg_port_bs(dev):
         port = bs_info["port"]
         bs = bs_info["bs_id"]
         bvi_list = bs_info["if_vlan"]
+
         if dev.port_bs.get(port):
             dev.port_bs[port]["bs"].append(bs)
         else:
@@ -1069,7 +1076,8 @@ def shorten_bs(dev):
     pattern = re.compile(r"^([A-Z]{2})(\d{4})")  # (AL)(7374)
     for port, port_info in dev.port_bs.items():
         city_bs = {"others": []}  # AL:[7341,7000] AS:[7007,7000] others:[ALR734,TEST_BS]
-        bs_desc = []  # [AL7374_7008_7007, AS7374_7375, ALR746]       
+        bs_desc = []  # [AL7374_7008_7007, AS7374_7375, ALR746]
+
         for bs in port_info["bs"]:
             match = re.search(pattern, bs)
             if match:
@@ -1081,12 +1089,13 @@ def shorten_bs(dev):
                     city_bs[region] = [bs_number]  # AL: [7374], AS: [7007]
             else:
                 city_bs["others"].append(bs)  # "others": [ALR734, AL100, TEST_BS]
+
         for i, j in city_bs.items():
             if i != "others":
                 bs_desc.append(f"{i}{'_'.join(j)}")  # ["AL7374_7008_7007"]
             elif i == "others" and len(j) > 0:
                 bs_desc.extend(j)  # ["AL7374_7008_7007", "ALR734", "AL100", "TEST_BS"]
-        dev.port_bs[port]["short_bs_descr"] = " ".join(bs_desc)
+        dev.port_bs[port]["new_bs_description"] = " ".join(bs_desc)
 
     for inf, inf_info in dev.ifvlan_bs.items():
         city_bs = {"others": []}
@@ -1108,42 +1117,43 @@ def shorten_bs(dev):
             elif i == "others" and len(j) > 0:
                 bs_desc.extend(j)
 
-        dev.ifvlan_bs[inf]["short_bs_descr"] = " ".join(bs_desc)
+        dev.ifvlan_bs[inf]["new_bs_description"] = " ".join(bs_desc)
 
 
 def csg_make_config(dev):
     for port, port_info in dev.port_bs.items():
-        if set(port_info["bs"]) != set(port_info["bs_from_device"]):
+        if set(port_info["bs"]) != set(port_info["bs_on_description"]):
             dev.commands.append(f"interface {port}")
-            dev.commands.append(f"description {port_info['tag']} BS: {port_info['short_bs_descr']}")
+            dev.commands.append(f"description {port_info['tag']} BS: {port_info['new_bs_description']}")
 
     for inf, inf_info in dev.ifvlan_bs.items():
-        if set(inf_info["bs"]) != set(inf_info["bs_from_device"]):
+        if set(inf_info["bs"]) != set(inf_info["bs_on_description"]):
             dev.commands.append(f"interface Vlan{inf}")
-            dev.commands.append(f"description {inf_info['tag']} BS: {inf_info['short_bs_descr']}")
+            dev.commands.append(f"description {inf_info['tag']} BS: {inf_info['new_bs_description']}")
 
 
 def xe_make_config(dev):
     for port, port_info in dev.port_bs.items():
-        if set(port_info["bs"]) != set(port_info["bs_from_device"]):
+        if set(port_info["bs"]) != set(port_info["bs_on_description"]):
             dev.commands.append(f"interface {port}")
-            dev.commands.append(f"description {port_info['tag']} BS: {port_info['short_bs_descr']}")
+            dev.commands.append(f"description {port_info['tag']} BS: {port_info['new_bs_description']}")
 
     for inf, inf_info in dev.ifvlan_bs.items():
-        if set(inf_info["bs"]) != set(inf_info["bs_from_device"]):
+        if set(inf_info["bs"]) != set(inf_info["bs_on_description"]):
             dev.commands.append(f"interface BDI{inf}")
-            dev.commands.append(f"description {inf_info['tag']} BS: {inf_info['short_bs_descr']}")
+            dev.commands.append(f"description {inf_info['tag']} BS: {inf_info['new_bs_description']}")
 
 
 def pagg_make_config(dev):
     for port, port_info in dev.port_bs.items():
-        if set(port_info["bs"]) != set(port_info["bs_from_device"]):
-            dev.commands.append(f"interface {port} description {port_info['tag']} BS: {port_info['short_bs_descr']}")
+        if set(port_info["bs"]) != set(port_info["bs_on_description"]):
+            dev.commands.append(f"interface {port} description {port_info['tag']} BS: {port_info['new_bs_description']}"
+                                )
 
     for bvi, bvi_info in dev.ifvlan_bs.items():
-        if set(bvi_info["bs"]) != set(bvi_info["bs_from_device"]):
+        if set(bvi_info["bs"]) != set(bvi_info["bs_on_description"]):
             dev.commands.append(f"interface BVI{bvi}")
-            dev.commands.append(f"description {bvi_info['tag']} BS: {bvi_info['short_bs_descr']}")
+            dev.commands.append(f"description {bvi_info['tag']} BS: {bvi_info['new_bs_description']}")
 
 
 def too_long_description(dev):
@@ -1168,7 +1178,7 @@ def configure(dev, settings):
 # ------------------------------              ----------------------------------------#
 #######################################################################################
 
-def connect_dev(my_username, my_password, dev_queue, bs_dict, settings):
+def connect_device(my_username, my_password, dev_queue, bs_dict, bs_dict_backup, settings):
     while True:
         dev = dev_queue.get()
         i = 0
@@ -1179,7 +1189,7 @@ def connect_dev(my_username, my_password, dev_queue, bs_dict, settings):
                                               username=my_username, password=my_password)
                 dev.show_commands()
                 define_inf_exclude(dev)
-                dev.parse(dev, bs_dict)
+                dev.parse(dev, bs_dict, bs_dict_backup)
                 dev.lag_member_tag(dev)
                 dev.delete_info(dev)
                 description_bs_parse(dev)
@@ -1282,28 +1292,32 @@ def test_connect2(my_username, my_password, dev_queue, bs_dict, settings):
 # ------------------------------ main part -------------------------------------------#
 #######################################################################################
 
-starttime = datetime.now()
-current_date = starttime.strftime("%Y.%m.%d")
-current_time = starttime.strftime("%H.%M.%S")
+start_time = datetime.now()
+current_date = start_time.strftime("%Y.%m.%d")
+current_time = start_time.strftime("%H.%M")
 
 log_folder = Path(f"{Path.cwd()}/logs/{current_date}/")  # current dir / logs / date /
 log_folder.mkdir(exist_ok=True)
 
 q = queue.Queue()
 
-argv_dict = get_argv(argv)
+settings = get_arguments(argv)
 username, password = get_user_pw()
-devices = get_devinfo("devices.yaml", argv_dict)
-mac_bs = load_excel(current_date, current_time)  # 04bd.70dc.a7ee : TA7175, информация от МТС
+devices = get_device_info("devices.yaml", settings)
+mac_bs, mac_bs_backup = load_excel(current_date, current_time)  # 04bd.70dc.a7ee : TA7175, информация от МТС
 
 total_devices = len(devices)
 
-print("-------------------------------------------------------------------------------------------------------")
-print("hostname               ip address      comment")
-print("---------------------- --------------- ----------------------------------------------------------------")
+print(
+    "\n"
+    f"Total devices: {total_devices}\n"
+    "-------------------------------------------------------------------------------------------------------\n"
+    "hostname               ip address      comment\n"
+    "---------------------- --------------- ----------------------------------------------------------------\n"
+)
 
-for i in range(argv_dict["maxth"]):
-    thread = Thread(target=connect_dev, args=(username, password, q, mac_bs, argv_dict))
+for i in range(settings["maxth"]):
+    thread = Thread(target=connect_device, args=(username, password, q, mac_bs, mac_bs_backup, settings))
     # thread = Thread(target=test_connect, args=(q, mac_bs, argv_dict))
     # thread = Thread(target=test_connect2, args=(username, password, q, mac_bs, argv_dict))
     thread.setDaemon(True)
@@ -1314,11 +1328,12 @@ for device in devices:
 
 q.join()
 
-print()
-failed_connection_count = write_logs(devices, current_time, log_folder, export_device_info, export_excel, argv_dict)
-duration = datetime.now() - starttime
+failed_connection_count = write_logs(devices, current_time, log_folder, settings)
+duration = datetime.now() - start_time
+duration_time = timedelta(seconds=duration.seconds)
 
-print("-------------------------------------------------------------------------------------------------------")
-print(f"failed connection: {failed_connection_count}  total device number: {total_devices}")
-print(f"elapsed time: {duration}")
-print("-------------------------------------------------------------------------------------------------------")
+print("\n"
+      "-------------------------------------------------------------------------------------------------------"
+      f"failed connection: {failed_connection_count}  total device number: {total_devices}"
+      f"elapsed time: {duration_time}"
+      "-------------------------------------------------------------------------------------------------------")
