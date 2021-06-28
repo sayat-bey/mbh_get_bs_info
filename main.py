@@ -40,7 +40,7 @@ class CellSiteGateway:
         self.show_tengig_bw_log = None
         self.show_tengig_bw = None     # 1G or None
 
-        self.pagg = "-"
+        self.pagg = None
         self.exclude_inf = []  # exclude interface vlans
         self.description_exclude = ["UPLINK", "DOWNLINK", "csg", "pagg", "ACCESS", "MGMT", "MNG", "ME"]
 
@@ -140,6 +140,7 @@ class PaggXR(CellSiteGateway):
         pagg_arp_log_parse(dev, bs_dict, bs_dict_backup)
         pagg_mac_log_parse(dev)     # после arp
         pagg_description_parse(dev)
+        dev.pagg = dev.hostname
 
     def lag_member_tag(self, dev):
         pagg_lag_member_tag(dev)
@@ -168,6 +169,7 @@ class PaggXE(CellSiteGateway):
     def parse(self, dev, bs_dict, bs_dict_backup):
         xe_mac_log_parse(dev, bs_dict, bs_dict_backup)
         xe_description_parse(dev)
+        dev.pagg = dev.hostname
 
     def delete_info(self, dev):
         csg_delete_info(dev)
