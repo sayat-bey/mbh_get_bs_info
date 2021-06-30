@@ -218,6 +218,7 @@ def get_arguments(arguments):
 def get_user_pw():
     user = input("Enter login: ")
     psw = getpass()
+    print()
     return user, psw
 
 
@@ -244,6 +245,10 @@ def get_device_info(yaml_file, settings):
 def load_excel(curr_date, curr_time):
     excel_file = input("Enter IP-MAC excel file (by default no excel file is loaded): ")
     result = {}  # mac : bs
+
+    with open("mac_bs_backup.yaml") as f:
+        yaml_file_backup = yaml.load(f, yaml.SafeLoader)
+
     if excel_file:
         wb = load_workbook(excel_file)
         first_sheet = wb.sheetnames[0]
@@ -262,9 +267,6 @@ def load_excel(curr_date, curr_time):
                 result[mac_final] = bs
             else:
                 break
-
-        with open("mac_bs_backup.yaml") as f:
-            yaml_file_backup = yaml.load(f, yaml.SafeLoader)
 
         with open("mac_bs_backup.yaml", "a") as file_backup:
             # update backup mac-bs file
@@ -538,7 +540,8 @@ def csg_mac_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
+                    if vlan not in dev.exclude_inf:
+                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -570,7 +573,8 @@ def xe_mac_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
+                    if vlan not in dev.exclude_inf:
+                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -647,7 +651,8 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
+                    if vlan not in dev.exclude_inf:
+                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
 
             if port_ethernet == "Bundle-Ether":
                 port_ethernet = "BE"
@@ -681,7 +686,8 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    print(f"{dev.hostname:39}: unknown MAC: {mac}")
+                    if vlan not in dev.exclude_inf:
+                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
 
             if dev.bs.get(mac):
                 dev.bs[mac]["if_vlan"].append(bvi)
@@ -1247,6 +1253,8 @@ def test_connect_dev(dev, settings):
             dev.show_isis_neighbors_log = isis_neigh.read()
         with open("test_mac.txt", "r") as mac:
             dev.show_mac_log = mac.read()
+        with open("test_tengig.txt", "r") as ten:
+            dev.show_tengig_bw_log = ten.read()
 
     elif settings["os_type"] == "cisco_xr":
         with open("test_pagg_arp.txt", "r") as arp:
@@ -1255,12 +1263,11 @@ def test_connect_dev(dev, settings):
             dev.show_description_log = descr.read()
 
 
-def test_connect(dev_queue, settings):
+def test_connect(dev_queue, settings, bs_dict, bs_dict_backup):
     dev = dev_queue.get()
     test_connect_dev(dev, settings)
-    dev.show_commands()
     define_inf_exclude(dev)
-    dev.parse(dev)
+    dev.parse(dev, bs_dict, bs_dict_backup)
     dev.lag_member_tag(dev)
     dev.delete_info(dev)
     description_bs_parse(dev)
@@ -1268,6 +1275,7 @@ def test_connect(dev_queue, settings):
     shorten_bs(dev)
     dev.make_config(dev)
     too_long_description(dev)
+    configure(dev, settings)
     dev_queue.task_done()
 
 
@@ -1320,7 +1328,7 @@ print(
 
 for i in range(settings["maxth"]):
     thread = Thread(target=connect_device, args=(username, password, q, mac_bs, mac_bs_backup, settings))
-    # thread = Thread(target=test_connect, args=(q, mac_bs, argv_dict))
+    # thread = Thread(target=test_connect, args=(q, settings, mac_bs, mac_bs_backup))
     # thread = Thread(target=test_connect2, args=(username, password, q, mac_bs, argv_dict))
     thread.setDaemon(True)
     thread.start()
@@ -1335,7 +1343,7 @@ duration = datetime.now() - start_time
 duration_time = timedelta(seconds=duration.seconds)
 
 print("\n"
-      "-------------------------------------------------------------------------------------------------------"
-      f"failed connection: {failed_connection_count}  total device number: {total_devices}"
-      f"elapsed time: {duration_time}"
+      "-------------------------------------------------------------------------------------------------------\n"
+      f"failed connection:.....{failed_connection_count}\n"
+      f"elapsed time:..........{duration_time}\n"
       "-------------------------------------------------------------------------------------------------------")

@@ -1,28 +1,4 @@
-Load for five secs: 30%/2%; one minute: 27%; five minutes: 27%
-Time source is NTP, .15:30:01.735 ALA Sun Mar 7 2021
+Load for five secs: 27%/2%; one minute: 27%; five minutes: 27%
+Time source is NTP, 00:21:39.493 ALA Thu Jul 1 2021
 
 Protocol  Address          Age (min)  Hardware Addr   Type   Interface
-Internet  10.165.128.66          15   d849.0b8c.aa3d  ARPA   Vlan1000
-Internet  10.165.128.67          15   68a8.282d.f99a  ARPA   Vlan1000
-Internet  10.165.128.68           9   d4b1.10b4.06c9  ARPA   Vlan1000
-Internet  10.165.128.69          15   3400.a341.baf6  ARPA   Vlan1000
-Internet  10.165.133.66          15   d849.0b8c.aa3d  ARPA   Vlan1001
-Internet  10.165.133.67          15   68a8.282d.f99a  ARPA   Vlan1001
-Internet  10.165.133.68           9   d4b1.10b4.06c9  ARPA   Vlan1001
-Internet  10.165.133.69          15   3400.a341.baf6  ARPA   Vlan1001
-Internet  10.165.138.66          15   d849.0b8c.aa3d  ARPA   Vlan1002
-Internet  10.165.138.67          15   68a8.282d.f99a  ARPA   Vlan1002
-Internet  10.165.138.68           7   d4b1.10b4.06c9  ARPA   Vlan1002
-Internet  10.165.138.69          15   3400.a341.baf6  ARPA   Vlan1002
-Internet  10.165.143.66          14   d849.0b8c.aa3d  ARPA   Vlan1003
-Internet  10.165.143.67          15   68a8.282d.f99a  ARPA   Vlan1003
-Internet  10.165.143.68           9   d4b1.10b4.06c9  ARPA   Vlan1003
-Internet  10.165.143.69          14   3400.a341.baf6  ARPA   Vlan1003
-Internet  10.165.148.66          15   d849.0b8c.aa3d  ARPA   Vlan1004
-Internet  10.165.148.67          15   68a8.282d.f99a  ARPA   Vlan1004
-Internet  10.165.148.68           9   d4b1.10b4.06c9  ARPA   Vlan1004
-Internet  10.165.148.69          15   3400.a341.baf6  ARPA   Vlan1004
-Internet  10.165.153.66          15   d849.0b8c.aa3d  ARPA   Vlan1005
-Internet  10.165.153.67          15   68a8.282d.f99a  ARPA   Vlan1005
-Internet  10.165.153.68           9   d4b1.10b4.06c9  ARPA   Vlan1005
-Internet  10.165.153.69          15   3400.a341.baf6  ARPA   Vlan1005

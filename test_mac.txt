@@ -1,5 +1,5 @@
-Load for five secs: 28%/2%; one minute: 27%; five minutes: 27%
-Time source is NTP, .15:29:29.843 ALA Sun Mar 7 2021
+Load for five secs: 26%/2%; one minute: 27%; five minutes: 27%
+Time source is NTP, 00:22:42.515 ALA Thu Jul 1 2021
           Mac Address Table
 -------------------------------------------
 
@@ -8,29 +8,4 @@ Vlan    Mac Address       Type        Ports
    2    e8ed.f349.fae5    DYNAMIC     Gi0/5
 4094    1004.9f00.0104    DYNAMIC     To0/12
 4093    c067.af91.e30b    DYNAMIC     To0/12
-1003    3400.a341.baf6    DYNAMIC     Gi0/6
-1003    68a8.282d.f99a    DYNAMIC     Gi0/6
-1003    d4b1.10b4.06c9    DYNAMIC     Gi0/6
-1003    d849.0b8c.aa3d    DYNAMIC     Gi0/4
-1005    3400.a341.baf6    DYNAMIC     Gi0/6
-1005    68a8.282d.f99a    DYNAMIC     Gi0/6
-1005    d4b1.10b4.06c9    DYNAMIC     Gi0/6
-1005    d849.0b8c.aa3d    DYNAMIC     Gi0/4
-1004    3400.a341.baf6    DYNAMIC     Gi0/6
-1004    68a8.282d.f99a    DYNAMIC     Gi0/6
-1004    d4b1.10b4.06c9    DYNAMIC     Gi0/6
-1004    d849.0b8c.aa3d    DYNAMIC     Gi0/4
-1000    3400.a341.baf6    DYNAMIC     Gi0/6
-1000    68a8.282d.f99a    DYNAMIC     Gi0/6
-1000    d4b1.10b4.06c9    DYNAMIC     Gi0/6
-1000    d849.0b8c.aa3d    DYNAMIC     Gi0/4
-1001    3400.a341.baf6    DYNAMIC     Gi0/6
-1001    68a8.282d.f99a    DYNAMIC     Gi0/6
-1001    d4b1.10b4.06c9    DYNAMIC     Gi0/6
-1001    d849.0b8c.aa3d    DYNAMIC     Gi0/4
-1002    3400.a341.baf6    DYNAMIC     Gi0/6
-1002    68a8.282d.f99a    DYNAMIC     Gi0/6
-1002    d4b1.10b4.06c9    DYNAMIC     Gi0/6
-1002    d849.0b8c.aa3d    DYNAMIC     Gi0/4
-4005    4846.fb0d.8d72    DYNAMIC     Gi0/6
 Total Mac Addresses for this criterion: 28
