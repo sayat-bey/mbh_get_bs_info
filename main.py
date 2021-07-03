@@ -296,6 +296,7 @@ def load_excel(curr_date, curr_time):
 
 def write_logs(devices, current_time, log_folder, settings):
     failed_conn_count = 0
+    devices_with_cfg = []
     export_excel(devices, current_time, log_folder)
 
     conn_msg = log_folder / f"{current_time}_connection_error_msg.txt"
@@ -329,7 +330,8 @@ def write_logs(devices, current_time, log_folder, settings):
             commands_file.write(f"### {device.hostname} : {device.ip_address}\n\n")
             commands_file.write("\n".join(device.commands))
             commands_file.write("\n\n\n")
-            
+            devices_with_cfg.append(f"{device.hostname} : {device.ip_address}")
+
         if device.removed_info:
             removed_file.write(f"{device.hostname}\t{' '.join(device.removed_info)}\n")
 
@@ -343,6 +345,11 @@ def write_logs(devices, current_time, log_folder, settings):
         config.unlink()
     if all([dev.connection_status is True for dev in devices]):
         conn_msg.unlink()
+    if not settings["conf"] and devices_with_cfg:
+        print("\n" + "-" * 103 + "\n"
+              "devices with cfg:\n")
+        for d in devices_with_cfg:
+            print(d)
 
     return failed_conn_count
 
