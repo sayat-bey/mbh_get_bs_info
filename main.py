@@ -387,7 +387,8 @@ def export_excel(devs, current_time, log_folder):
                                       ])
 
                 else:
-                    if any(i in port_info["tag"] for i in ["iot, IOT, IoT, lora, LORA"]) and len(port_info["bs"]) == 0:
+                    if any(i in port_info["tag"] for i in ["iot", "IOT", "IoT", "lora", "LORA"]) and \
+                            len(port_info["bs"]) == 0:
                         sheet.append([dev.pagg,
                                       dev.hostname,
                                       dev.ip_address,
@@ -396,7 +397,7 @@ def export_excel(devs, current_time, log_folder):
                                       "-",
                                       "-"])
 
-                    if "Te" in port and dev.show_tengig_bw == "1G":
+                    elif "Te" in port and dev.show_tengig_bw == "1G":
                         if len(port_info["bs"]) > 0:
                             sheet.append([dev.pagg,
                                           dev.hostname,
