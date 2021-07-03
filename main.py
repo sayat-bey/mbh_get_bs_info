@@ -541,7 +541,7 @@ def csg_mac_log_parse(dev, bs_dict, bs_dict_backup):
                 else:
                     bs = mac
                     if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
+                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -574,7 +574,7 @@ def xe_mac_log_parse(dev, bs_dict, bs_dict_backup):
                 else:
                     bs = mac
                     if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
+                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -652,7 +652,7 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                 else:
                     bs = mac
                     if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
+                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
 
             if port_ethernet == "Bundle-Ether":
                 port_ethernet = "BE"
@@ -687,7 +687,7 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                 else:
                     bs = mac
                     if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}: unknown MAC: {mac}, vlan: {vlan}")
+                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
 
             if dev.bs.get(mac):
                 dev.bs[mac]["if_vlan"].append(bvi)
