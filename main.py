@@ -40,7 +40,7 @@ class CellSiteGateway:
         self.show_tengig_bw_log = None
         self.show_tengig_bw = None     # 1G or None
 
-        self.pagg = None
+        self.pagg = "-"
         self.exclude_inf = []  # exclude interface vlans
         self.description_exclude = ["UPLINK", "DOWNLINK", "csg", "pagg", "ACCESS", "MGMT", "MNG", "ME"]
 
@@ -556,9 +556,7 @@ def csg_mac_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
-                
+
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
             else:
@@ -588,8 +586,6 @@ def xe_mac_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
                 
             if dev.bs.get(mac):
                 dev.bs[mac]["vlan"].append(vlan)
@@ -638,7 +634,7 @@ def csg_arp_log_parse(dev):
             if dev.bs.get(mac):
                 dev.bs[mac]["if_vlan"].append(inf)
             else:
-                print(f"{dev.hostname:39}: arp_log_parse - {mac} not in MAC table")
+                print(f"{dev.hostname:39}arp_log_parse - {mac} not in MAC table")
 
 
 def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
@@ -665,8 +661,6 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
 
             if port_ethernet == "Bundle-Ether":
                 port_ethernet = "BE"
@@ -699,8 +693,6 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    if bvi not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {bvi}")
 
             if dev.bs.get(mac):
                 dev.bs[mac]["if_vlan"].append(bvi)
@@ -995,6 +987,9 @@ def csg_delete_info(dev):
     for mac, bs_info in dev.bs.items():
         if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
+            if mac in dev.show_arp_log and len(bs_info["vlan"]) > 2:
+                print(f"{dev.hostname:39}Unknown MAC: {mac}")
+
         elif mac not in dev.show_arp_log and dev.hostname not in dev_exclude:
             delete_mac.append(mac)
 
@@ -1016,6 +1011,8 @@ def pagg_delete_info(dev):
     for mac, bs_info in dev.bs.items():
         if len(bs_info["bs_id"]) == 14:     # удалить все неопределенные MAC, 0046.4bb4.8f76=14
             delete_mac.append(mac)
+            if len(bs_info["vlan"]) > 2:
+                print(f"{dev.hostname:39}Unknown MAC: {mac}")
 
     if delete_mac:
         for i in set(delete_mac):
