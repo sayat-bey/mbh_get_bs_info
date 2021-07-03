@@ -559,8 +559,7 @@ def csg_mac_log_parse(dev, bs_dict, bs_dict_backup):
                                "vlan": [vlan]}
                                
             if "Po" in port:
-                if dev.lag:
-                    dev.lag[port] = {"members": [], "tag": []}
+                dev.lag[port] = {"members": [], "tag": []}
 
 
 def xe_mac_log_parse(dev, bs_dict, bs_dict_backup):
@@ -593,8 +592,7 @@ def xe_mac_log_parse(dev, bs_dict, bs_dict_backup):
                                "vlan": [vlan]}
                                
             if "Po" in port:
-                if dev.lag:
-                    dev.lag[port] = {"members": [], "tag": []}
+                dev.lag[port] = {"members": [], "tag": []}
 
 
 def pagg_mac_log_parse(dev):
@@ -679,8 +677,7 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                                "bs_id": bs}
                                
             if port_ethernet == "BE":
-                if dev.lag:
-                    dev.lag[f"{port_ethernet}{port_number}"] = {"members": [], "tag": []}
+                dev.lag[f"{port_ethernet}{port_number}"] = {"members": [], "tag": []}
 
         if match_bvi:
             mac = match_bvi[1]
