@@ -693,8 +693,8 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
                     bs = bs_dict_backup[mac]
                 else:
                     bs = mac
-                    if vlan not in dev.exclude_inf and mac in dev.show_arp_log:
-                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {vlan}")
+                    if bvi not in dev.exclude_inf and mac in dev.show_arp_log:
+                        print(f"{dev.hostname:39}unknown MAC: {mac}, vlan: {bvi}")
 
             if dev.bs.get(mac):
                 dev.bs[mac]["if_vlan"].append(bvi)
