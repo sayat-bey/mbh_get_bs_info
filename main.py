@@ -467,30 +467,35 @@ def export_device_info(dev, export_file):
     export_file.write("#" * 80 + "\n")
     export_file.write(f"### {dev.hostname} : {dev.ip_address} ###\n\n")
 
-    export_file.write("-" * 80 + "\n")
-    export_file.write("device.show_isis_log\n\n")
-    export_file.write(dev.show_isis_log)
-    export_file.write("\n\n")
+    if dev.show_isis_log:
+        export_file.write("-" * 80 + "\n")
+        export_file.write("device.show_isis_log\n\n")
+        export_file.write(dev.show_isis_log)
+        export_file.write("\n\n")
 
-    export_file.write("-" * 80 + "\n")
-    export_file.write("device.show_mac_log\n\n")
-    export_file.write(dev.show_mac_log)
-    export_file.write("\n\n")
+    if dev.show_mac_log:
+        export_file.write("-" * 80 + "\n")
+        export_file.write("device.show_mac_log\n\n")
+        export_file.write(dev.show_mac_log)
+        export_file.write("\n\n")
 
-    export_file.write("-" * 80 + "\n")
-    export_file.write("device.show_arp_log\n\n")
-    export_file.write(dev.show_arp_log)
-    export_file.write("\n\n")
+    if dev.show_arp_log:
+        export_file.write("-" * 80 + "\n")
+        export_file.write("device.show_arp_log\n\n")
+        export_file.write(dev.show_arp_log)
+        export_file.write("\n\n")
 
-    export_file.write("-" * 80 + "\n")
-    export_file.write("device.show_description_log\n\n")
-    export_file.write(dev.show_description_log)
-    export_file.write("\n\n")
+    if dev.show_description_log:
+        export_file.write("-" * 80 + "\n")
+        export_file.write("device.show_description_log\n\n")
+        export_file.write(dev.show_description_log)
+        export_file.write("\n\n")
 
-    export_file.write("-" * 80 + "\n")
-    export_file.write("device.show_isis_neighbors_log\n\n")
-    export_file.write(dev.show_isis_neighbors_log)
-    export_file.write("\n\n")
+    if dev.show_isis_neighbors_log:
+        export_file.write("-" * 80 + "\n")
+        export_file.write("device.show_isis_neighbors_log\n\n")
+        export_file.write(dev.show_isis_neighbors_log)
+        export_file.write("\n\n")
 
     export_file.write("-" * 80 + "\n")
     export_file.write("device.bs\n\n")
