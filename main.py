@@ -394,7 +394,6 @@ def export_excel(devs, current_time, log_folder):
                                       dev.ip_address,
                                       port,
                                       port_info["tag"],
-                                      "-",
                                       "-"])
 
                     elif "Te" in port and dev.show_tengig_bw == "1G":
