@@ -39,6 +39,7 @@ class CellSiteGateway:
         self.show_isis_neighbors_log = None
         self.show_tengig_bw_log = None
         self.show_tengig_bw = None     # 1G or None
+        self.unknown_mac = []
 
         self.pagg = "-"
         self.exclude_inf = []  # exclude interface vlans
@@ -297,6 +298,8 @@ def load_excel(curr_date, curr_time):
 def write_logs(devices, current_time, log_folder, settings):
     failed_conn_count = 0
     devices_with_cfg = []
+    unknown_mac = []
+
     export_excel(devices, current_time, log_folder)
 
     conn_msg = log_folder / f"{current_time}_connection_error_msg.txt"
@@ -335,6 +338,9 @@ def write_logs(devices, current_time, log_folder, settings):
         if device.removed_info:
             removed_file.write(f"{device.hostname}\t{' '.join(device.removed_info)}\n")
 
+        if device.unknown_mac:
+            unknown_mac.extend(device.unknown_mac)
+
     conn_msg_file.close()
     device_info_file.close()
     config_file.close()
@@ -350,6 +356,11 @@ def write_logs(devices, current_time, log_folder, settings):
               "devices with cfg:\n")
         for d in devices_with_cfg:
             print(d)
+    if unknown_mac:
+        print("\n" + "-" * 103 + "\n"
+              "devices with unknown mac:\n")
+        for u in unknown_mac:
+            print(u)
 
     return failed_conn_count
 
@@ -994,6 +1005,7 @@ def csg_delete_info(dev):
             delete_mac.append(mac)
             if mac in dev.show_arp_log and len(bs_info["vlan"]) > 2:
                 print(f"{dev.hostname:39}Unknown MAC: {mac}")
+                dev.unknown_mac.append(mac)
 
         elif mac not in dev.show_arp_log and dev.hostname not in dev_exclude:
             delete_mac.append(mac)
@@ -1018,6 +1030,7 @@ def pagg_delete_info(dev):
             delete_mac.append(mac)
             if len(bs_info["vlan"]) > 2:
                 print(f"{dev.hostname:39}Unknown MAC: {mac}")
+                dev.unknown_mac.append(mac)
 
     if delete_mac:
         for i in set(delete_mac):
