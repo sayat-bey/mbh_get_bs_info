@@ -1081,13 +1081,15 @@ def csg_port_bs(dev):
         if dev.port_bs.get(port):
             dev.port_bs[port]["bs"].append(bs)
         else:
-            print(f"{dev.hostname:39}{port} not in port_bs dict")
+            if dev.hostname not in ["asta-032001-csg-2", "atba.koks-025001-csg-1"]:
+                print(f"{dev.hostname:39}{port} not in port_bs dict")
 
         for ifvlan in ifvlanlist:
             if dev.ifvlan_bs.get(ifvlan):
                 dev.ifvlan_bs[ifvlan]["bs"].append(bs)
             else:
-                print(f"{dev.hostname:39}{ifvlan} vlan not in ifvlan_bs dict")
+                if dev.hostname not in ["rudn-005006-csg-1", "zato.kost-055002-csg-1", "oktb.ustk-001034-csg-1"]:
+                    print(f"{dev.hostname:39}{ifvlan} vlan not in ifvlan_bs dict")
 
 
 def pagg_port_bs(dev):
