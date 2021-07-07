@@ -364,18 +364,18 @@ def write_logs(devices, current_time, log_folder, settings):
     if all([dev.connection_status is True for dev in devices]):
         conn_msg.unlink()
     if not settings["conf"] and devices_with_cfg:
-        print("\n" + "-" * 103 + "\n"
-              "devices with cfg:\n")
+        print("\n" + "-" * 103 + "\n")
+        print(f"devices with cfg ({len(devices_with_cfg)}):\n")
         for d in devices_with_cfg:
             print(d)
     if unknown_mac:
-        print("\n" + "-" * 103 + "\n"
-              "devices with unknown mac:\n")
+        print("\n" + "-" * 103 + "\n")
+        print(f"devices with unknown mac ({len(unknown_mac)}):\n")
         for u in unknown_mac:
             print(u)
     if unavailable_device:
-        print("\n" + "-" * 103 + "\n"
-              "unavailable devices:\n")
+        print("\n" + "-" * 103 + "\n")
+        print(f"unavailable devices ({len(unavailable_device)}):\n")
         for ud in unavailable_device:
             print(ud)
 
