@@ -297,8 +297,11 @@ def load_excel(curr_date, curr_time):
 
 def write_logs(devices, current_time, log_folder, settings):
     failed_conn_count = 0
+    unavailable_device = []
     devices_with_cfg = []
     unknown_mac = []
+    tag_hostname = {}
+    bs_hostname = {}
 
     export_excel(devices, current_time, log_folder)
 
@@ -307,6 +310,8 @@ def write_logs(devices, current_time, log_folder, settings):
     config = log_folder / f"{current_time}_configuration_log.txt"
     commands = log_folder / f"{current_time}_configuration_needed.txt"
     removed = log_folder / f"{current_time}_removed_info.txt"
+    tag_hostname_file = log_folder / f"{current_time}_tag_hostname.txt"
+    bs_hostname_file = log_folder / f"{current_time}_bs_hosname.txt"
 
     conn_msg_file = open(conn_msg, "w")
     device_info_file = open(device_info, "w")
@@ -322,7 +327,7 @@ def write_logs(devices, current_time, log_folder, settings):
             conn_msg_file.write("-" * 80 + "\n")
             conn_msg_file.write(f"### {device.hostname} : {device.ip_address} ###\n\n")
             conn_msg_file.write(f"{device.connection_error_msg}\n")
-            config_file.write("\n\n")
+            unavailable_device.append(f"{device.hostname} : {device.ip_address}")
             
         if settings["conf"] and device.commands:
             config_file.write("#" * 80 + "\n")
@@ -340,6 +345,13 @@ def write_logs(devices, current_time, log_folder, settings):
 
         if device.unknown_mac:
             unknown_mac.extend(device.unknown_mac)
+
+        # check if a optic bs is connectec via RRL
+        for pv in device.port_bs.values():
+            if not tag_hostname.get(pv["tag"]):
+                tag_hostname[pv["tag"]] = device.hostname
+        for mc in device.bs.values():
+            bs_hostname[mc["bs_id"]] = device.hostname
 
     conn_msg_file.close()
     device_info_file.close()
@@ -361,6 +373,25 @@ def write_logs(devices, current_time, log_folder, settings):
               "devices with unknown mac:\n")
         for u in unknown_mac:
             print(u)
+    if unavailable_device:
+        print("\n" + "-" * 103 + "\n"
+              "unavailable devices:\n")
+        for ud in unavailable_device:
+            print(ud)
+
+    # check if a optic bs is connectec via RRL
+    print("\n" + "-" * 103 + "\n"
+          "bs on multiple devices check:\n")
+    with open(tag_hostname_file, "w") as thf:
+        for tagk, tagv in tag_hostname.items():
+            thf.write(f"{tagk} : {tagv}\n")
+    with open(bs_hostname_file, "w") as bhf:
+        for bsk, bsv in bs_hostname.items():
+            bhf.write(f"{bsk} : {bsv}\n")
+    for bsid, bshost in bs_hostname.items():
+        for tagid, taghost in tag_hostname.items():
+            if bsid in tagid and bshost != taghost:
+                print(f"{bsid} is on devices: {bshost}, {taghost}\n")
 
     return failed_conn_count
 
