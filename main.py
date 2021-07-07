@@ -391,7 +391,7 @@ def write_logs(devices, current_time, log_folder, settings):
     for bsid, bshost in bs_hostname.items():
         for tagid, taghost in tag_hostname.items():
             if bsid in tagid and bshost != taghost:
-                print(f"{bsid} is on devices: {bshost}, {taghost}\n")
+                print(f"{bsid} is on devices: {bshost}, {taghost}")
 
     return failed_conn_count
 
