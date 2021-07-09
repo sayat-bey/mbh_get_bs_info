@@ -195,7 +195,7 @@ class PaggXE(CellSiteGateway):
 
 
 def get_arguments(arguments):
-    settings = {"maxth": 10, "conf": False, "os_type": "cisco_ios"}
+    settings = {"maxth": 20, "conf": False, "os_type": "cisco_ios"}
     mt_pattern = re.compile(r"mt([0-9]+)")
     for arg in arguments:
         if "mt" in arg:
