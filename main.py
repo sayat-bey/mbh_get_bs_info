@@ -1,4 +1,5 @@
 import yaml
+import csv
 import time
 import queue
 import re
@@ -251,23 +252,50 @@ def load_excel(curr_date, curr_time):
         yaml_file_backup = yaml.load(f, yaml.SafeLoader)
 
     if excel_file:
-        wb = load_workbook(excel_file)
-        first_sheet = wb.sheetnames[0]
-        sheet = wb[first_sheet]
-        x = 2
+        if excel_file.endswith('xlsx'):
+            wb = load_workbook(excel_file)
+            first_sheet = wb.sheetnames[0]
+            sheet = wb[first_sheet]
+            x = 2
 
-        while True:
-            mac = sheet.cell(row=x, column=4).value
-            bs = sheet.cell(row=x, column=1).value
-            if bs:
-                x += 1
-                mac_split = mac.split(":")
-                mac_final = "{}{}.{}{}.{}{}".format(mac_split[0], mac_split[1],
-                                                    mac_split[2], mac_split[3],
-                                                    mac_split[4], mac_split[5])
-                result[mac_final] = bs
-            else:
-                break
+            while True:
+                mac = sheet.cell(row=x, column=4).value
+                bs = sheet.cell(row=x, column=1).value
+                if bs:
+                    x += 1
+                    mac_split = mac.split(":")
+                    mac_final = "{}{}.{}{}.{}{}".format(mac_split[0], mac_split[1],
+                                                        mac_split[2], mac_split[3],
+                                                        mac_split[4], mac_split[5])
+                    result[mac_final] = bs
+                else:
+                    break
+
+            with open("mac_bs.yaml", "w") as output_file:
+                output_file.write(f"# {curr_date} {curr_time}\n\n")
+                for i, j in result.items():
+                    output_file.write(f"{i} : {j}\n")
+
+        elif excel_file.endswith('csv'):
+            with open(excel_file) as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=',')
+                line_count = 0
+                for row in csv_reader:
+                    if line_count == 0:
+                        line_count += 1
+                    else:
+                        bs = row[0]
+                        mac_dd = row[3]
+                        mac_split = mac_dd.split(":")
+                        mac = "{}{}.{}{}.{}{}".format(mac_split[0], mac_split[1],
+                                                      mac_split[2], mac_split[3],
+                                                      mac_split[4], mac_split[5])
+                        result[mac] = bs
+
+            with open("mac_bs.yaml", "w") as output_file:
+                output_file.write(f"# {curr_date} {curr_time}\n\n")
+                for i, j in result.items():
+                    output_file.write(f"{i} : {j}\n")
 
         with open("mac_bs_backup.yaml", "a") as file_backup:
             # update backup mac-bs file
@@ -279,12 +307,8 @@ def load_excel(curr_date, curr_time):
             for diff_key in diff_keys:
                 file_backup.write(f"{diff_key} : {result[diff_key]}\n")
 
-        with open("mac_bs.yaml", "w") as output_file:
-            output_file.write(f"# {curr_date} {curr_time}\n\n")
-            for i, j in result.items():
-                output_file.write(f"{i} : {j}\n")
-
         print("mac_bs.yaml, mac_bs_backup.yaml are created")
+
     else:
         with open("mac_bs.yaml", "r") as file:
             yaml_file = yaml.load(file, yaml.SafeLoader)
