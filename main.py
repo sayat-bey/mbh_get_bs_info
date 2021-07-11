@@ -1167,6 +1167,7 @@ def pagg_port_bs(dev):
 
 def shorten_bs(dev):
     pattern = re.compile(r"^([A-Z]{2})(\d{4})")  # (AL)(7374)
+    long_pattern = re.compile(r"[A-Z]{2}\d{4}_\d{4}(_\d{4})*")  # AL7374_1234_1243_4566_2342
     for port, port_info in dev.port_bs.items():
         city_bs = {"others": []}  # AL:[7341,7000] AS:[7007,7000] others:[ALR734,TEST_BS]
         bs_desc = []  # [AL7374_7008_7007, AS7374_7375, ALR746]
@@ -1188,7 +1189,40 @@ def shorten_bs(dev):
                 bs_desc.append(f"{i}{'_'.join(j)}")  # ["AL7374_7008_7007"]
             elif i == "others" and len(j) > 0:
                 bs_desc.extend(j)  # ["AL7374_7008_7007", "ALR734", "AL100", "TEST_BS"]
-        dev.port_bs[port]["new_bs_description"] = " ".join(bs_desc)
+
+        new_bs_description = " ".join(bs_desc)
+        if len(new_bs_description) > 200:
+            long_bs_desc = []   # ["AL7374_08_07", "ALR734"]
+            for b in bs_desc:
+                long_match = re.search(long_pattern, b)
+                if long_match:
+                    b_short = {}                # 73 : [12, 12], 12 : [12, 13, 14]
+                    b_short_list = []           # 7312.12, 1212.13.14
+                    b_split = b[2:].split("_")  # ['7374', '1234', '1243', '4566', '2342']
+                    b_city = b[:2]              # AL
+                    for b2 in b_split:
+                        b_head = b2[:2]
+                        b_tail = b2[2:]
+                        if b_short.get(b_head):
+                            b_short[b_head].append(b_tail)
+                        else:
+                            b_short[b_head] = [b_tail]
+
+                    for bh, bt in b_short.items():
+                        if len(bt) > 3:
+                            b_short_list.append(f"{bh}xx({','.join(bt)})")
+                        else:
+                            for b3 in bt:
+                                b_short_list.append(f"{bh}{b3}")
+
+                    long_bs_desc.append(f"{b_city}{'_'.join(b_short_list)}")
+                else:
+                    long_bs_desc.append(b)
+
+            dev.port_bs[port]["new_bs_description"] = " ".join(long_bs_desc)
+            
+        else:
+            dev.port_bs[port]["new_bs_description"] = new_bs_description
 
     for inf, inf_info in dev.ifvlan_bs.items():
         city_bs = {"others": []}
