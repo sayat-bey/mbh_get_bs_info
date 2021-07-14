@@ -1190,11 +1190,10 @@ def shorten_bs(dev):
                 bs_desc.extend(j)  # ["AL7374_7008_7007", "ALR734", "AL100", "TEST_BS"]
 
         new_bs_description = " ".join(bs_desc)
+        dev.port_bs[port]["new_bs_description"] = new_bs_description
+
         if len(new_bs_description) > 200:
-            dev.port_bs[port]["new_bs_description"] = f"{new_bs_description[:150]} ...{len(port_info['bs'])} BS"
-            print(f"{dev.hostname:39}description is longer than 200")
-        else:
-            dev.port_bs[port]["new_bs_description"] = new_bs_description
+            print(f"{dev.hostname:39}{port}: description is longer than 200")
 
     for inf, inf_info in dev.ifvlan_bs.items():
         city_bs = {"others": []}
