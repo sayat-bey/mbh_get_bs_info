@@ -930,7 +930,7 @@ def pagg_description_parse(dev):
     pattern_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")
     # (AU7104) BS: (ZHA012)
     pattern_bvi = re.compile(r"BV(\d+) +up +up *(.*)$")
-    pattern_bvi_tag_bs = re.compile(r"(?:(.*)\s)?BS:\s?(.*)")
+    pattern_bvi_tag_bs = re.compile(r"(?:.*\s)?BS:\s?(.*)")
 
     for line in dev.show_description_log.splitlines():
         match = re.search(pattern, line)
