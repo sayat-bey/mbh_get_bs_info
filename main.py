@@ -218,10 +218,10 @@ def get_arguments(arguments):
 
 
 def get_user_pw():
-    user = input("Enter login: ")
-    psw = getpass()
-    print()
-    return user, psw
+    with open("psw.yaml") as file:
+        user_psw = yaml.load(file, yaml.SafeLoader)
+
+    return user_psw[0], user_psw[1]
 
 
 def get_device_info(yaml_file, settings):
@@ -421,7 +421,7 @@ def write_logs(devices, current_time, log_folder, settings):
 
 
 def export_excel(devs, current_time, log_folder):
-    filename = log_folder / f"{current_time}_mbh_bs_list.xlsx"
+    filename = log_folder / f"{current_time}_mbh_bs_list_(merged_cells).xlsx"
     wb = Workbook()
     sheet = wb.active
     sheet.append(["PAGG",
@@ -525,6 +525,92 @@ def export_excel(devs, current_time, log_folder):
                     sheet.merge_cells(start_row=r - 1 - start_r, start_column=c, end_row=r - 1, end_column=c)
                     sheet.cell(row=r - 1 - start_r, column=c).alignment = styles.Alignment(vertical='center')
                 break
+
+    wb.save(filename)
+
+
+def export_excel_split(devs, current_time, log_folder):
+    filename = log_folder / f"{current_time}_mbh_bs_list.xlsx"
+    wb = Workbook()
+    sheet = wb.active
+    sheet.append(["PAGG",
+                  "CSG hostname",
+                  "CSG loopback0",
+                  "CSG port",
+                  "port tag",
+                  "BS",
+                  "comments"])
+    for dev in devs:
+        if dev.connection_status:
+            for port, port_info in dev.port_bs.items():
+                if dev.lag.get(port):
+                    if len(port_info["bs"]) > 0:
+                        sheet.append([dev.pagg,
+                                      dev.hostname,
+                                      dev.ip_address,
+                                      f'{port} ({len(dev.lag[port]["members"])} Gps)',
+                                      f'{" ".join(set(dev.lag[port]["tag"]))}',
+                                      ' '.join(port_info["bs"])])
+                    else:
+                        sheet.append([dev.pagg,
+                                      dev.hostname,
+                                      dev.ip_address,
+                                      f'{port} ({len(dev.lag[port]["members"])} Gps)',
+                                      f'{" ".join(set(dev.lag[port]["tag"]))}',
+                                      "",
+                                      "no bs"
+                                      ])
+
+                else:
+                    if any(i in port_info["tag"] for i in ["iot", "IOT", "IoT", "lora", "LORA"]) and \
+                            len(port_info["bs"]) == 0:
+                        sheet.append([dev.pagg,
+                                      dev.hostname,
+                                      dev.ip_address,
+                                      port,
+                                      port_info["tag"],
+                                      "-"])
+
+                    elif "Te" in port and dev.show_tengig_bw == "1G":
+                        if len(port_info["bs"]) > 0:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          f'{port} (1 Gps)',
+                                          port_info["tag"],
+                                          ' '.join(port_info["bs"])])
+                        else:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          f'{port} (1 Gps)',
+                                          port_info["tag"],
+                                          "",
+                                          "no bs"])
+                    else:
+                        if len(port_info["bs"]) > 0:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          port,
+                                          port_info["tag"],
+                                          ' '.join(port_info["bs"])])
+                        else:
+                            sheet.append([dev.pagg,
+                                          dev.hostname,
+                                          dev.ip_address,
+                                          port,
+                                          port_info["tag"],
+                                          "",
+                                          "no bs"])
+        else:
+            sheet.append([dev.pagg,
+                          dev.hostname,
+                          dev.ip_address,
+                          "-",
+                          "-",
+                          "-",
+                          "unavailable"])
 
     wb.save(filename)
 
