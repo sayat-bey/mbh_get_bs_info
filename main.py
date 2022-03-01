@@ -6,7 +6,6 @@ import re
 from threading import Thread
 from pprint import pformat
 from openpyxl import load_workbook, Workbook, styles
-from getpass import getpass
 from sys import argv
 from datetime import datetime, timedelta
 from pathlib import Path
