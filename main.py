@@ -194,7 +194,7 @@ class PaggXE(CellSiteGateway):
 
 
 def get_arguments(arguments):
-    settings = {"maxth": 20, "conf": False, "os_type": "cisco_ios"}
+    settings = {"maxth": 20, "conf": False}
     mt_pattern = re.compile(r"mt([0-9]+)")
     for arg in arguments:
         if "mt" in arg:
@@ -203,15 +203,10 @@ def get_arguments(arguments):
                 settings["maxth"] = int(match[1])
         elif arg == "cfg" or arg == "CFG" or arg == "conf":
             settings["conf"] = True
-        elif arg == "xr" or arg == "XR":
-            settings["os_type"] = "cisco_xr"
-        elif arg == "xe" or arg == "XE":
-            settings["os_type"] = "cisco_xe"    
-
+    
     print("\n"
           f"max threads:...................{settings['maxth']}\n"
           f"config mode:...................{settings['conf']}\n"
-          f"OS:............................{settings['os_type']}\n"
           )
     return settings
 
@@ -223,22 +218,23 @@ def get_user_pw():
     return user_psw[0], user_psw[1]
 
 
-def get_device_info(yaml_file, settings):
+def get_device_info(csv_file):
     devs = []
-    with open(yaml_file, "r") as file:
-        devices_info = yaml.load(file, yaml.SafeLoader)
-        if settings["os_type"] == "cisco_ios":
-            for hostname, ip_address in devices_info.items():
+    with open(csv_file, "r") as file:
+        for line in file:
+            hostname, ip_address, ios = line.strip().split(",")
+
+            if ios == "ios":
                 dev = CellSiteGateway(ip=ip_address, host=hostname)
                 devs.append(dev)
-        elif settings["os_type"] == "cisco_xr":
-            for hostname, ip_address in devices_info.items():
+            elif ios == "ios xr":
                 dev = PaggXR(ip=ip_address, host=hostname)
                 devs.append(dev)
-        elif settings["os_type"] == "cisco_xe":
-            for hostname, ip_address in devices_info.items():
+            elif ios == "ios xe":
                 dev = PaggXE(ip=ip_address, host=hostname)
                 devs.append(dev)
+            else:
+                print(f"wrong ios: {ios}")
 
     return devs
 
@@ -247,7 +243,7 @@ def load_excel(curr_date, curr_time):
     excel_file = input("Enter IP-MAC excel file (by default no excel file is loaded): ")
     result = {}  # mac : bs
 
-    with open("mac_bs_backup.yaml") as f:
+    with open("mac_bs_backup.yaml") as f:   
         yaml_file_backup = yaml.load(f, yaml.SafeLoader)
 
     if excel_file:
@@ -327,7 +323,8 @@ def write_logs(devices, current_time, log_folder, settings):
     bs_hostname = {}
 
     export_excel(devices, current_time, log_folder)
-
+    export_excel_split(devices, current_time, log_folder)
+    
     conn_msg = log_folder / f"{current_time}_connection_error_msg.txt"
     device_info = log_folder / f"{current_time}_device_info.txt"
     config = log_folder / f"{current_time}_configuration_log.txt"
@@ -1479,7 +1476,7 @@ q = queue.Queue()
 
 settings = get_arguments(argv)
 username, password = get_user_pw()
-devices = get_device_info("devices.yaml", settings)
+devices = get_device_info("devices.csv")
 mac_bs, mac_bs_backup = load_excel(current_date, current_time)  # 04bd.70dc.a7ee : TA7175, информация от МТС
 
 total_devices = len(devices)
