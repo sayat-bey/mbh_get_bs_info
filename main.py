@@ -359,7 +359,7 @@ def write_logs(devices, current_time, log_folder, settings):
             commands_file.write(f"### {device.hostname} : {device.ip_address}\n\n")
             commands_file.write("\n".join(device.commands))
             commands_file.write("\n\n\n")
-            devices_with_cfg.append(f"{device.hostname} : {device.ip_address}")
+            devices_with_cfg.append(f"{device.hostname},{device.ip_address},{device.os_type}")
 
         if device.removed_info:
             removed_file.write(f"{device.hostname}\t{' '.join(device.removed_info)}\n")
