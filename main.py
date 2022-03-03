@@ -4,7 +4,7 @@ import time
 import queue
 import re
 from threading import Thread
-from pprint import pformat
+from pprint import pformat, pprint
 from openpyxl import load_workbook, Workbook, styles
 from sys import argv
 from datetime import datetime, timedelta
@@ -225,13 +225,13 @@ def get_device_info(csv_file):
             if "#" not in line and len(line) > 5:
                 hostname, ip_address, ios = line.strip().split(",")
 
-                if ios == "ios":
+                if ios in ["ios", "cisco_ios"]:
                     dev = CellSiteGateway(ip=ip_address, host=hostname)
                     devs.append(dev)
-                elif ios == "ios xr":
+                elif ios in ["ios xr", "cisco_xr", "xr"]:
                     dev = PaggXR(ip=ip_address, host=hostname)
                     devs.append(dev)
-                elif ios == "ios xe":
+                elif ios in ["ios xe", "cisco_xe", "xe"]:
                     dev = PaggXE(ip=ip_address, host=hostname)
                     devs.append(dev)
                 else:
@@ -853,6 +853,7 @@ def pagg_arp_log_parse(dev, bs_dict, bs_dict_backup):
             else:
                 dev.bs[mac] = {"port": '',
                                "if_vlan": [bvi],
+                               "vlan": [],
                                "bs_id": bs}
 
 
@@ -1387,14 +1388,32 @@ def connect_device(my_username, my_password, dev_queue, bs_dict, bs_dict_backup,
                 if i == 2:  # tries
                     dev.connection_status = False
                     dev.connection_error_msg = str(err_msg)
-                    # print(f"{dev.hostname:23}{dev.ip_address:16}{'BREAK connection failed':20} i={i}")
+                    print(f"{dev.hostname:23}{dev.ip_address:16}{'BREAK connection failed':20} i={i}")
                     dev_queue.task_done()
                     break
                 else:
                     i += 1
                     dev.reset()
-                    print(f"{dev.hostname:23}{dev.ip_address:16}ERROR connection failed i={i}")
+                    # print(f"{dev.hostname:23}{dev.ip_address:16}ERROR connection failed i={i}")
                     time.sleep(5)
+'''
+def connect_device(my_username, my_password, dev_queue, bs_dict, bs_dict_backup, settings):
+    dev = dev_queue.get()
+    dev.ssh_conn = ConnectHandler(device_type=dev.os_type, ip=dev.ip_address,
+                                  username=my_username, password=my_password)
+    dev.show_commands()
+    define_inf_exclude(dev)
+    dev.parse(dev, bs_dict, bs_dict_backup)
+    dev.lag_member_tag(dev)
+    dev.delete_info(dev)
+    description_bs_parse(dev)
+    dev.define_port_bs(dev)
+    shorten_bs(dev)
+    dev.make_config(dev)
+    configure(dev, settings)
+    dev.ssh_conn.disconnect()
+    dev_queue.task_done()
+'''
 
 
 #######################################################################################
