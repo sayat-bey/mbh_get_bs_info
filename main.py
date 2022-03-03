@@ -222,19 +222,20 @@ def get_device_info(csv_file):
     devs = []
     with open(csv_file, "r") as file:
         for line in file:
-            hostname, ip_address, ios = line.strip().split(",")
+            if "#" not in line and len(line) > 5:
+                hostname, ip_address, ios = line.strip().split(",")
 
-            if ios == "ios":
-                dev = CellSiteGateway(ip=ip_address, host=hostname)
-                devs.append(dev)
-            elif ios == "ios xr":
-                dev = PaggXR(ip=ip_address, host=hostname)
-                devs.append(dev)
-            elif ios == "ios xe":
-                dev = PaggXE(ip=ip_address, host=hostname)
-                devs.append(dev)
-            else:
-                print(f"wrong ios: {ios}")
+                if ios == "ios":
+                    dev = CellSiteGateway(ip=ip_address, host=hostname)
+                    devs.append(dev)
+                elif ios == "ios xr":
+                    dev = PaggXR(ip=ip_address, host=hostname)
+                    devs.append(dev)
+                elif ios == "ios xe":
+                    dev = PaggXE(ip=ip_address, host=hostname)
+                    devs.append(dev)
+                else:
+                    print(f"wrong ios: {ios}")
 
     return devs
 
@@ -1382,23 +1383,17 @@ def connect_device(my_username, my_password, dev_queue, bs_dict, bs_dict_backup,
                 dev_queue.task_done()
                 break
                  
-            except SSHException:
-                i += 1
-                dev.reset()
-                print(f"{dev.hostname:23}{dev.ip_address:16}SSHException occurred \t i={i}")
-                time.sleep(5)
-
             except Exception as err_msg:
                 if i == 2:  # tries
                     dev.connection_status = False
                     dev.connection_error_msg = str(err_msg)
-                    print(f"{dev.hostname:23}{dev.ip_address:16}{'BREAK connection failed':20} i={i}")
+                    # print(f"{dev.hostname:23}{dev.ip_address:16}{'BREAK connection failed':20} i={i}")
                     dev_queue.task_done()
                     break
                 else:
                     i += 1
                     dev.reset()
-                    print(f"{dev.hostname:23}{dev.ip_address:16}ERROR connection failed \t i={i}")
+                    print(f"{dev.hostname:23}{dev.ip_address:16}ERROR connection failed i={i}")
                     time.sleep(5)
 
 
@@ -1493,7 +1488,7 @@ for i in range(settings["maxth"]):
     thread = Thread(target=connect_device, args=(username, password, q, mac_bs, mac_bs_backup, settings))
     # thread = Thread(target=test_connect, args=(q, settings, mac_bs, mac_bs_backup))
     # thread = Thread(target=test_connect2, args=(username, password, q, mac_bs, argv_dict))
-    thread.setDaemon(True)
+    thread.daemon = True
     thread.start()
 
 for device in devices:
