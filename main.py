@@ -40,6 +40,7 @@ class CellSiteGateway:
         self.show_tengig_bw_log = None
         self.show_tengig_bw = None     # 1G or None
         self.unknown_mac = []
+        self.down_port_with_description = {}    # {port : description}
 
         self.pagg = "-"
         self.exclude_inf = []  # exclude interface vlans
@@ -115,6 +116,7 @@ class CellSiteGateway:
         self.removed_info = []
         self.commands = []
         self.configuration_log = []
+        self.down_port_with_description = {}
 
 
 class PaggXR(CellSiteGateway):
@@ -333,12 +335,14 @@ def write_logs(devices, current_time, log_folder, settings):
     removed = log_folder / f"{current_time}_removed_info.txt"
     tag_hostname_file = log_folder / f"{current_time}_tag_hostname.txt"
     bs_hostname_file = log_folder / f"{current_time}_bs_hosname.txt"
+    down_port_with_description = log_folder / f"{current_time}_down_port_with_description.txt"
 
     conn_msg_file = open(conn_msg, "w")
     device_info_file = open(device_info, "w")
     config_file = open(config, "w")
     commands_file = open(commands, "w")
     removed_file = open(removed, "w")
+    down_port_with_description_file = open(down_port_with_description, "w")
 
     for device in devices:
         if device.connection_status:
@@ -367,6 +371,10 @@ def write_logs(devices, current_time, log_folder, settings):
         if device.unknown_mac:
             unknown_mac.extend(device.unknown_mac)
 
+        if device.down_port_with_description:
+            for port, description in device.down_port_with_description.items():
+                down_port_with_description_file.write(f"{device.hostname},{device.ip_address},{port},{description}\n")
+
         # check if a optic bs is connectec via RRL
         for pv in device.port_bs.values():
             if not tag_hostname.get(pv["tag"]):
@@ -379,11 +387,14 @@ def write_logs(devices, current_time, log_folder, settings):
     config_file.close()
     commands_file.close()
     removed_file.close()
+    down_port_with_description_file.close()
 
     if not settings["conf"]:
         config.unlink()
     if all([dev.connection_status is True for dev in devices]):
         conn_msg.unlink()
+    if all([not len(dev.down_port_with_description) for dev in devices]):
+        down_port_with_description.unlink()
     if not settings["conf"] and devices_with_cfg:
         print("\n" + "-" * 103 + "\n")
         print(f"devices with cfg ({len(devices_with_cfg)}):\n")
@@ -674,6 +685,11 @@ def export_device_info(dev, export_file):
     export_file.write("-" * 80 + "\n")
     export_file.write("device.commands\n\n")
     export_file.write(pformat(dev.commands))
+    export_file.write("\n\n")
+
+    export_file.write("-" * 80 + "\n")
+    export_file.write("device.down_port_with_description\n\n")
+    export_file.write(pformat(dev.down_port_with_description))
     export_file.write("\n\n")
 
 
@@ -1350,6 +1366,18 @@ def configure(dev, settings):
             print(f"{dev.hostname:39}cfg is needed")
 
 
+def down_port_with_description(dev):
+    # find ports in down state with description 
+    pattern = re.compile(r"(\S+)\s+(?:down|admin down|admin-down)\s+(?:down|admin down|admin-down)\s+(\S+.*)")
+    for line in dev.show_description_log.splitlines():
+        match = re.search(pattern, line)
+        if match:
+            port = match[1]
+            description = match[2]
+            if "Vl" not in port and "Don `t open" not in description and "Don't open" not in description:    # exclude Vlan Interface 
+                dev.down_port_with_description[port] = description
+
+
 #######################################################################################
 # ------------------------------              ----------------------------------------#
 #######################################################################################
@@ -1366,6 +1394,7 @@ def connect_device(my_username, my_password, dev_queue, bs_dict, bs_dict_backup,
                 dev.show_commands()
                 define_inf_exclude(dev)
                 dev.parse(dev, bs_dict, bs_dict_backup)
+                down_port_with_description(dev)
                 dev.lag_member_tag(dev)
                 dev.delete_info(dev)
                 description_bs_parse(dev)

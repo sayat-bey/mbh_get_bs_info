@@ -1,5 +1,12 @@
 # mbh_get_bs_info
 
+create logs folder
+create devices.csv file with list of devices inside:
+- hostname1,ip1,ios
+- hostname2,ip2,ios xe
+- hostname3,ip3,ios xr
+
+
 v3 (03.12.2019)
 - анализ портов на PAGG
 - сокращение description 
