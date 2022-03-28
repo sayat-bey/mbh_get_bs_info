@@ -1374,7 +1374,7 @@ def down_port_with_description(dev):
         if match:
             port = match[1]
             description = match[2]
-            if "Vl" not in port and "Don `t open" not in description and "Don't open" not in description:    # exclude Vlan Interface 
+            if "Vl" not in port and "Don `t open" not in description and "Don't open" not in description and description != "UPLINK":    # exclude Vlan Interface 
                 dev.down_port_with_description[port] = description
 
 
