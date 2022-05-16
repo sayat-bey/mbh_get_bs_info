@@ -2,6 +2,7 @@
 __pycache__/**
 logs/**
 devices.yaml
+devices.csv
 mac_bs.yaml
 mac_bs_backup.yaml
 mac_bs_all.yaml
